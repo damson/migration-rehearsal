@@ -5,18 +5,15 @@ The repository is private. Nothing here is deployed and nothing publishes itself
 Settled already: the licence is MIT and covers the article and the code alike,
 the docs are written for strangers, and CI runs on every push.
 
-## The one thing that should happen first
+## The thing that used to block this is done
 
-**Run `reference/probe-selftest.yml` green, once, in a repository where the
-placeholders have been substituted.**
+`reference/probe-selftest.yml` now runs here, with its placeholders substituted,
+against a Postgres 17 service container, on every push and pull request. Every
+guard has been watched refusing for the stated reason, including the two
+assertions that come from `pg_class` rather than from the probe's own report.
 
-Nothing in this repository has ever connected to a database. The reference
-implementation's pure logic is tested, and its plumbing is not, because there is
-no Postgres here to test it against. The article's own argument is that a check
-nobody has watched refuse is decoration, and until that self-test runs, the
-sentence describes the reference implementation as much as anything else.
-
-It is tracked as an issue on this repository.
+The article's argument is that a check nobody has watched refuse is decoration.
+That sentence no longer describes this repository.
 
 ## Still open
 
