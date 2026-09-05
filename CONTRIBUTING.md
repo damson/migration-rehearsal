@@ -27,6 +27,30 @@ npm install
 npm run verify   # typecheck, tests, and the placeholder check. What CI runs.
 ```
 
+## Branching
+
+Two long-lived branches, and neither is ever committed to directly.
+
+- **`develop`** is the default branch and where everything integrates. Cut your
+  branch from it, and open your pull request against it.
+- **`main`** carries releases. It moves only through a release pull request from
+  `develop`.
+
+```sh
+git switch develop
+git pull
+git switch -c my-change
+```
+
+Two rules follow from that, and both have cost real projects real time:
+
+- **Ordinary pull requests into `develop` are squashed.** One commit per logical
+  change keeps the history readable.
+- **A release pull request, `develop` into `main`, is merged with a merge
+  commit.** Never squashed, never rebased. A squash is not the commits it
+  squashed, so squashing a release makes every commit in it look permanently
+  unmerged, and the next release then conflicts with its own history.
+
 ## What lives where
 
 - `docs/probing-migrations-against-real-rows.md` is the article. It is the

@@ -1,3 +1,8 @@
+<!--
+Base this on `develop`, not `main`. `main` carries releases and moves only
+through a release pull request. See CONTRIBUTING.md § Branching.
+-->
+
 # What this changes
 
 <!-- One or two sentences. What is different after this lands? -->

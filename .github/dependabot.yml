@@ -2,8 +2,14 @@ version: 2
 updates:
   # Grouped and monthly. A stream of single-bump pull requests on a repository
   # this size is noise, and `pg` is the only runtime dependency.
+  #
+  # `target-branch` matters under gitflow. Without it Dependabot bases its pull
+  # requests on the default branch, and a bump landing straight on `main` would
+  # put a commit on the release branch that `develop` has never seen, which is
+  # exactly the divergence the two-branch model exists to avoid.
   - package-ecosystem: npm
     directory: /
+    target-branch: develop
     schedule:
       interval: monthly
     open-pull-requests-limit: 5
@@ -13,6 +19,7 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: monthly
     groups:

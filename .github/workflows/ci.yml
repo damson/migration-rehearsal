@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Both long-lived branches. `develop` is where work integrates and where
+    # pull requests are based; `main` carries releases. Measuring only one of
+    # them leaves the other's history unverified, and a base branch nobody
+    # measures is a base nobody can compare a pull request against.
+    branches: [main, develop]
   pull_request:
   workflow_dispatch:
 
