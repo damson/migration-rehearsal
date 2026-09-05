@@ -114,6 +114,9 @@ of a silent write.
 5. **Copy `reference/probe-selftest.yml` too, and watch it pass.** This is the
    step people skip, and it is the one that turns "I believe this rolls back"
    into "I have watched it roll back". Only then make the probe a required check.
+   `.github/workflows/selftest.yml` here is exactly that file with the
+   placeholders filled in, if you would rather copy a worked example than fill in
+   a template.
 
 ## Is this safe?
 
@@ -151,6 +154,8 @@ that absence is what makes guard 3 necessary.
 | `reference/run-probe.ts` | The plumbing: environment, filesystem, the Postgres client, the printing. |
 | `reference/probe.test.ts` | 30 tests over `probe.ts`, using a scripted fake driver. |
 | `tools/check-placeholders.mjs` | Keeps the workflows and this README from drifting apart. Runs in CI. |
+| `.github/workflows/selftest.yml` | The self-test with its placeholders substituted, running here on every push. This repository adopting its own pattern. |
+| `examples/migrations/` | Two ordinary migrations, so the self-test has a real schema and a real ledger to probe. |
 
 `probe.ts` and `run-probe.ts` are separate files because a module that calls
 `main()` at import time cannot be imported by a test without running the whole
@@ -259,15 +264,30 @@ between a check that ran and a check that looked green.
 - **`probe.ts`** is covered by `probe.test.ts`, which runs in CI: 30 tests over
   the guards, the failure classification and the transaction sequence, against a
   scripted fake driver.
-- **`run-probe.ts` and both workflows have not been executed in this
-  repository.** They are transcriptions of code that runs elsewhere,
-  parameterised. Nothing here has ever connected to a database.
+- **The whole thing runs against a real database in this repository's own CI.**
+  `.github/workflows/selftest.yml` is `reference/probe-selftest.yml` with the
+  placeholders substituted, pointed at `examples/migrations` and a Postgres 17
+  service container. It runs on every push and every pull request.
+
+That last one is what makes the rest worth reading. On the most recent run, in
+order:
+
+| Case | What Postgres actually said |
+|---|---|
+| Ledger current | nothing applied, nothing checked, exit 0 |
+| Clean pending migration | applied, rolled back, `public` unchanged at 5 objects, and `probe_ok` verified absent from `pg_class` afterwards |
+| `NOT NULL` over rows | `column "probe_nn" of relation "probe_target" contains null values [23502]`, classified DATA-SHAPE |
+| Migration containing `commit` | refused before anything was dialled |
+| Migration containing bare `end;` | savepoint destroyed, `25P01`, and `probe_escape` verified still present, so the alarm was a real one |
+| Override against a non-loopback host | refused, naming the host |
+| Loopback target, no override | refused, so the default is fail-closed |
 
 A fake driver can tell you that `rollback` is issued when a migration throws. It
 cannot tell you that a column name is real or that a constraint would reject a
-row. The self-test workflow is what answers that, and running it is the first
-thing to do after substituting the placeholders. There is an open issue tracking
-exactly that.
+row. The two rows above that come from `pg_class` rather than from the probe's
+own report are the ones carrying the argument: the first says the probe does not
+write to its target, and the second stops an alarm that fires on every run from
+passing as a working guard.
 
 ## Contributing
 

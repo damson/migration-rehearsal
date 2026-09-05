@@ -29,10 +29,10 @@ First version. Not yet public.
 - `tools/check-placeholders.mjs`, which parses both reference workflows and holds
   the placeholder list and the README table to each other.
 
-### Known gaps
-
-- `run-probe.ts` and both workflows have never been executed in this repository.
-  Nothing here has connected to a database.
+- `.github/workflows/selftest.yml` and `examples/migrations/`: the reference
+  self-test with its placeholders substituted, running against a Postgres 17
+  service container on every push and pull request. Every guard has been watched
+  refusing, for the stated reason, against a real database.
 
 [Unreleased]: https://github.com/damson/migration-probe-pattern/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/damson/migration-probe-pattern/releases/tag/v0.1.0
