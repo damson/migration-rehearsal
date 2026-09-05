@@ -1,0 +1,24 @@
+{
+  "name": "migration-probe-pattern",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "An article and a reference implementation for probing a pull request's migrations against real rows inside a rolled-back transaction.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "probe": "tsx reference/run-probe.ts",
+    "verify": "npm run typecheck && npm run test"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.9"
+  }
+}

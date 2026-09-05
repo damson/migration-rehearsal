@@ -1,0 +1,121 @@
+name: Probe migrations
+
+# Applies a pull request's unapplied migrations to a live non-production
+# database inside a transaction that is rolled back, and fails the pull request
+# if they cannot apply.
+#
+# PLACEHOLDERS. Every <ANGLE_BRACKET> value below has to be replaced before this
+# file will run. That is deliberate: a half-adapted copy fails loudly at parse
+# time instead of quietly probing the wrong database.
+#
+#   <MIGRATIONS_DIR>          where migrations live, e.g. supabase/migrations
+#   <PROBE_DIR>               where probe.ts and run-probe.ts live
+#   <PROBE_ENVIRONMENT>       the environment that holds the credential
+#   <PROBE_DB_URL_SECRET>     environment secret: the target connection string
+#   <EXPECTED_PROJECT_REF>    repository or environment variable: which database
+#                             the probe is allowed to touch
+#   <NODE_VERSION>            e.g. '20'
+#   <SECRETS_DOC>             where the setup checklist lives, for the message
+#                             a reader sees when the credential is absent
+#
+# WHY A LIVE DATABASE. An offline job that applies every migration to an EMPTY
+# Postgres container cannot see any failure that needs rows:
+#
+#   add a nullable column          container succeeds   live target succeeds
+#   NOT NULL with no default       container succeeds   live target FAILS 23502
+#   unique index over duplicates   container succeeds   live target FAILS 23505
+#   CHECK real rows violate        container succeeds   live target FAILS 23514
+#
+# Three of the four failure classes are invisible to any offline gate. Without
+# this job they surface on the merge commit, after the pull request is closed.
+#
+# WHY IT IS SAFE. run-probe.ts refuses a target that is not the expected project
+# before dialling, refuses any migration carrying transaction control before
+# dialling, proves the rollback happened with a savepoint, and measures the
+# target's object count either side. The guards are unit-tested, and the
+# companion workflow probe-selftest.yml exercises them end to end against a
+# throwaway Postgres.
+#
+# WHY `pull_request` AND NOT `pull_request_target`. This job feeds the pull
+# request's own SQL to a live database. `pull_request_target` would hand that
+# SQL a credential even when the pull request comes from a fork, which turns "a
+# fork cannot run the check" into "a stranger's SQL runs against a real
+# database": worse than the gap it closes. A fork pull request gets no secret
+# here, and the job says so and passes.
+#
+# WHY THE ENVIRONMENT. It gates no branch: a pull_request run's ref is
+# `refs/pull/N/merge`, which no deployment-branch policy matches. What it does
+# buy is real. An environment secret is readable only by a job that declares
+# that environment, so every other workflow in the repository, scheduled jobs
+# included, cannot read this credential.
+#
+# Security note: no pull request title, body, branch name or commit message is
+# interpolated into any `run:` step. The migration SQL is read from disk by the
+# runner and passed to the driver as a parameterless query, never through a
+# shell.
+
+on:
+  pull_request:
+    paths:
+      - '<MIGRATIONS_DIR>/**.sql'
+      - '<PROBE_DIR>/**'
+      - '.github/workflows/probe-migrations.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  # Per pull request, and cancellable: a second push supersedes the first, and
+  # two probes holding DDL locks on the same database at once would block each
+  # other and everything else with them.
+  group: probe-migrations-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: probe migrations against real rows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: <PROBE_ENVIRONMENT>
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '<NODE_VERSION>'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Probe this branch's migrations against real rows
+        env:
+          PROBE_TARGET_DB_URL: ${{ secrets.<PROBE_DB_URL_SECRET> }}
+          PROBE_EXPECTED_PROJECT_REF: ${{ vars.<EXPECTED_PROJECT_REF> }}
+          PROBE_MIGRATIONS_DIR: <MIGRATIONS_DIR>
+        run: |
+          set -euo pipefail
+          # Two ways the credential is legitimately absent: the setup checklist
+          # is not complete yet, or this pull request comes from a fork, where
+          # GitHub withholds secrets by design. Both end here, loudly.
+          #
+          # This job must NOT be a required status check until the secret
+          # exists, because a check that passes without running is worse than no
+          # check at all.
+          if [ -z "${PROBE_TARGET_DB_URL:-}" ] || [ -z "${PROBE_EXPECTED_PROJECT_REF:-}" ]; then
+            {
+              echo '### Migration probe DID NOT RUN'
+              echo
+              echo 'This pull request touches a migration and nothing checked it against real rows.'
+              echo 'The three failure classes this job exists to catch, 23502, 23505 and 23514, are'
+              echo 'invisible to the throwaway-Postgres job, so a green checks list here says the'
+              echo 'migration is syntactically valid and nothing more.'
+              echo
+              echo 'Cause: either the probe credential and expected reference are not configured'
+              echo '(see <SECRETS_DOC>), or this pull request is from a fork, where GitHub withholds'
+              echo 'secrets deliberately.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=Migration probe did not run::No credential in this run. This pull request's migrations were never applied to real rows."
+            exit 0
+          fi
+          npx tsx <PROBE_DIR>/run-probe.ts | tee -a "$GITHUB_STEP_SUMMARY"
