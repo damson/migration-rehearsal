@@ -1,5 +1,5 @@
 {
-  "name": "migration-probe-pattern",
+  "name": "migration-rehearsal",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
@@ -7,12 +7,12 @@
   "description": "Probe a pull request's migrations against real rows inside a rolled-back transaction: the article, two reference workflows and a tested reference implementation.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/damson/migration-probe-pattern.git"
+    "url": "git+https://github.com/damson/migration-rehearsal.git"
   },
   "bugs": {
-    "url": "https://github.com/damson/migration-probe-pattern/issues"
+    "url": "https://github.com/damson/migration-rehearsal/issues"
   },
-  "homepage": "https://github.com/damson/migration-probe-pattern#readme",
+  "homepage": "https://github.com/damson/migration-rehearsal#readme",
   "type": "module",
   "engines": {
     "node": ">=20"

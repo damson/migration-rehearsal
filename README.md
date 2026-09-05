@@ -1,6 +1,6 @@
-# migration-probe-pattern
+# migration-rehearsal
 
-[![CI](https://github.com/damson/migration-probe-pattern/actions/workflows/ci.yml/badge.svg)](https://github.com/damson/migration-probe-pattern/actions/workflows/ci.yml)
+[![CI](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml/badge.svg)](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml)
 [![licence MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 [![node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](#running-it-yourself)
 [![Postgres](https://img.shields.io/badge/postgres-any%20version-blue)](#faq)
@@ -15,6 +15,13 @@ pull request when real rows cannot accommodate the change.
 
 Nothing is written. That is the whole trick, and most of the work here goes into
 proving it.
+
+Two words appear here and they are not competing. The repository is named for
+what the technique gives you: a rehearsal, on the real stage, with nothing kept
+afterwards. The thing that performs one is a **probe**, and that is the word the
+code and the article use throughout: `reference/probe.ts`, `npm run probe`,
+`probe-migrations.yml`. The production codebase this was extracted from calls it
+that too.
 
 **[Read the article](docs/probing-migrations-against-real-rows.md)** for the full
 reasoning. It is self-contained, and it opens with a plain-language primer if any
@@ -195,8 +202,8 @@ and they are marked as such at the top of the file:
 Node 20 or newer.
 
 ```sh
-git clone https://github.com/damson/migration-probe-pattern.git
-cd migration-probe-pattern
+git clone https://github.com/damson/migration-rehearsal.git
+cd migration-rehearsal
 npm install
 npm run verify   # typecheck, the test suite, and the placeholder check
 ```

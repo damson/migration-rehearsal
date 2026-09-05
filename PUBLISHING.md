@@ -15,18 +15,27 @@ assertions that come from `pg_class` rather than from the probe's own report.
 The article's argument is that a check nobody has watched refuse is decoration.
 That sentence no longer describes this repository.
 
+## Settled since
+
+**The name is `migration-rehearsal`.** It names what the technique gives you
+rather than the mechanism that performs it, which stays a probe in the code and
+in the article. The README says so in its opening, because a reader meeting both
+words deserves to be told they are not two things.
+
+**The reference implementation ships with the article.** It is written, tested
+and exercised against a real Postgres here, so the maintenance surface is already
+being paid for: one dependency and a suite that already runs. The argument
+against reimplementation is the same one the article makes about the guards,
+which are the part a reader is most likely to get subtly wrong.
+
+That leaves distribution, which is not a blocker. The article can also appear as
+a post linking back to these files, and nothing about shipping the repository
+forecloses it.
+
 ## Still open
 
-1. **The name.** `migration-probe-pattern` is a working name.
-2. **Where the article lands.** A public repository is what this is built for,
-   and the article would also work as a post with the reference files linked from
-   it, or as a chapter in an engineering handbook. Those are not exclusive.
-3. **Whether the reference implementation ships alongside it.** The article is
-   complete without it. Shipping it makes the workflows usable, and adds a
-   maintenance surface.
-
 Everything that has to happen before the visibility flip is tracked as issues on
-this repository.
+this repository. None of it can be done from inside a private repository.
 
 ## Identities
 

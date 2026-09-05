@@ -21,8 +21,8 @@ attached, so the most valuable contributions are often not code at all.
 Node 20 or newer, and nothing else. No database is needed for the test suite.
 
 ```sh
-git clone https://github.com/damson/migration-probe-pattern.git
-cd migration-probe-pattern
+git clone https://github.com/damson/migration-rehearsal.git
+cd migration-rehearsal
 npm install
 npm run verify   # typecheck, tests, and the placeholder check. What CI runs.
 ```

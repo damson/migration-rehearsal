@@ -6,7 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- The repository is `migration-rehearsal`. It was `migration-probe-pattern`, a
+  working name. Nothing has been released under either, and GitHub redirects the
+  old URL. The mechanism is still called a probe, in the code and in the article.
 
 ## [0.1.0]
 
@@ -34,5 +38,5 @@ First version. Not yet public.
   service container on every push and pull request. Every guard has been watched
   refusing, for the stated reason, against a real database.
 
-[Unreleased]: https://github.com/damson/migration-probe-pattern/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/damson/migration-probe-pattern/releases/tag/v0.1.0
+[Unreleased]: https://github.com/damson/migration-rehearsal/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/damson/migration-rehearsal/releases/tag/v0.1.0
