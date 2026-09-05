@@ -1,0 +1,37 @@
+name: Adoption report
+description: You tried this on a real repository. Tell us what happened, good or bad.
+labels: ['adoption']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        These are genuinely useful, including the boring ones. The article makes
+        a measured claim about four failure classes, and every independent
+        measurement either strengthens it or corrects it.
+
+  - type: input
+    id: tool
+    attributes:
+      label: Migration tool and Postgres version
+      placeholder: 'Flyway 10, Postgres 16'
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >
+        Did the self-test pass? Did the probe catch something a pull request
+        would otherwise have merged? Did anything need changing beyond the
+        placeholders?
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurement
+    attributes:
+      label: Your own version of the table
+      description: >
+        Optional. If you ran the four migrations against both an empty container
+        and a target with rows, the results are worth recording here.

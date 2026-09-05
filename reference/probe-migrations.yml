@@ -4,9 +4,9 @@ name: Probe migrations
 # database inside a transaction that is rolled back, and fails the pull request
 # if they cannot apply.
 #
-# PLACEHOLDERS. Every <ANGLE_BRACKET> value below has to be replaced before this
-# file will run. That is deliberate: a half-adapted copy fails loudly at parse
-# time instead of quietly probing the wrong database.
+# PLACEHOLDERS. Every value written in angle brackets below has to be replaced
+# before this file will run. That is deliberate: a half-adapted copy fails
+# loudly instead of quietly probing the wrong database.
 #
 #   <MIGRATIONS_DIR>          where migrations live, e.g. supabase/migrations
 #   <PROBE_DIR>               where probe.ts and run-probe.ts live

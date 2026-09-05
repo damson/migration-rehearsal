@@ -1,0 +1,43 @@
+name: Problem, gap or correction
+description: Something is wrong, missing, or does not survive contact with a real repository.
+labels: ['needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Corrections to the reasoning are as welcome as corrections to the code,
+        and more valuable. This repository publishes a safety argument, so a flaw
+        in the argument gets copied into other people's pipelines.
+
+        If the problem is that a guard can be escaped, please report it
+        privately instead:
+        https://github.com/damson/migration-probe-pattern/security/policy
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is it
+      options:
+        - The article
+        - A reference workflow
+        - The reference implementation
+        - The README or the adaptation instructions
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong
+      description: What you read or ran, and what did not hold.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Your setup
+      description: >
+        Optional, and useful when it is a code problem: migration tool, Postgres
+        version, whether the target had realistic rows.

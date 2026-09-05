@@ -2,14 +2,37 @@
   "name": "migration-probe-pattern",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
-  "description": "An article and a reference implementation for probing a pull request's migrations against real rows inside a rolled-back transaction.",
+  "license": "MIT",
+  "author": "Damien D. <devddagnet@gmail.com>",
+  "description": "Probe a pull request's migrations against real rows inside a rolled-back transaction: the article, two reference workflows and a tested reference implementation.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/damson/migration-probe-pattern.git"
+  },
+  "bugs": {
+    "url": "https://github.com/damson/migration-probe-pattern/issues"
+  },
+  "homepage": "https://github.com/damson/migration-probe-pattern#readme",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "postgres",
+    "migrations",
+    "ci",
+    "github-actions",
+    "supabase",
+    "database",
+    "testing"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:watch": "vitest",
+    "check:placeholders": "node tools/check-placeholders.mjs",
     "probe": "tsx reference/run-probe.ts",
-    "verify": "npm run typecheck && npm run test"
+    "verify": "npm run typecheck && npm run test && npm run check:placeholders"
   },
   "dependencies": {
     "pg": "^8.13.0"
@@ -19,6 +42,7 @@
     "@types/pg": "^8.11.10",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vitest": "^2.1.9"
+    "vitest": "^2.1.9",
+    "yaml": "^2.5.1"
   }
 }

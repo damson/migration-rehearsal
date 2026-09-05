@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Grouped and monthly. A stream of single-bump pull requests on a repository
+  # this size is noise, and `pg` is the only runtime dependency.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      dependencies:
+        patterns: ['*']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']

@@ -1,26 +1,38 @@
-# Before this is published
+# Before this goes public
 
-Nothing here has been pushed anywhere. The repository is local, `package.json`
-carries `"private": true`, and there is no `LICENSE` file.
+The repository is private. Nothing here is deployed and nothing publishes itself.
 
-Open decisions, all of them the maintainer's:
+Settled already: the licence is MIT and covers the article and the code alike,
+the docs are written for strangers, and CI runs on every push.
 
-1. **Where the article lands.** A public repository is the option this is built
-   for, but the article stands on its own and would work as a post with the
-   reference files linked from it, or as a section of an existing engineering
-   handbook.
-2. **The licence.** Code and prose may want different ones: MIT or Apache-2.0 for
-   the reference implementation, CC BY or similar for the article.
-3. **The name.** `migration-probe-pattern` is a working name.
-4. **Whether the reference implementation ships at all.** The article is complete
-   without it. Shipping it makes the workflows usable, and adds a maintenance
-   surface.
+## The one thing that should happen first
 
-## Before flipping anything public
+**Run `reference/probe-selftest.yml` green, once, in a repository where the
+placeholders have been substituted.**
 
-- Run the self-test workflow against a throwaway Postgres at least once, in a
-  repository where the placeholders have been substituted. It is the only thing
-  that proves the reference implementation works end to end, and it has never
-  been run here.
-- Re-read the article for anything that identifies a specific project,
-  environment or account. It was written to name none.
+Nothing in this repository has ever connected to a database. The reference
+implementation's pure logic is tested, and its plumbing is not, because there is
+no Postgres here to test it against. The article's own argument is that a check
+nobody has watched refuse is decoration, and until that self-test runs, the
+sentence describes the reference implementation as much as anything else.
+
+It is tracked as an issue on this repository.
+
+## Still open
+
+1. **The name.** `migration-probe-pattern` is a working name.
+2. **Where the article lands.** A public repository is what this is built for,
+   and the article would also work as a post with the reference files linked from
+   it, or as a chapter in an engineering handbook. Those are not exclusive.
+3. **Whether the reference implementation ships alongside it.** The article is
+   complete without it. Shipping it makes the workflows usable, and adds a
+   maintenance surface.
+
+Everything that has to happen before the visibility flip is tracked as issues on
+this repository.
+
+## Identities
+
+Git commits use `damson@users.noreply.github.com`, set locally in this
+repository. `devddagnet@gmail.com` is the contact address in the security policy
+and the code of conduct.

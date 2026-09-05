@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question about adopting this
+    url: https://github.com/damson/migration-probe-pattern/discussions
+    about: Ask anything, including whether this is the right approach for your setup.
+  - name: A way past the guards
+    url: https://github.com/damson/migration-probe-pattern/security/policy
+    about: Please report privately. This pattern points automation at a live database.

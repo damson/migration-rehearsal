@@ -15,6 +15,40 @@ constraints trivially, because there is nothing there to violate them. So the
 gate passes, the pull request merges, and the migration fails on the way into a
 database that has rows.
 
+## If some of these words are new
+
+Skip this if they are not. Nothing later depends on reading it, and the rest of
+the article assumes only what is here.
+
+**A migration** is a small file of SQL that changes the shape of a database:
+adding a column, creating an index, adding a rule about what values are allowed.
+They are numbered and applied in order, and a **ledger** table inside the
+database records which ones have been applied, so the tool knows where it got to.
+
+**CI** is the set of automated checks that run when you open a pull request. The
+migration check most projects have starts a brand new, completely empty Postgres,
+applies every migration to it, and passes if none of them errors.
+
+**Staging** is a copy of your production setup that real users never see. It
+usually holds realistic data, which is the property this whole article depends
+on.
+
+**A transaction** is a group of statements that either all take effect or none
+do. You open one with `BEGIN`. `COMMIT` makes the changes permanent, and
+`ROLLBACK` throws them away as though they never happened. **A savepoint** is a
+bookmark inside a transaction that you can rewind to.
+
+The important and slightly surprising fact: **Postgres can roll back structural
+changes**, not just row edits. You can create a table inside a transaction, roll
+back, and the table is gone. Many databases cannot do this. It is what makes
+everything below possible.
+
+**SQLSTATE codes** are the five-character codes Postgres attaches to errors, like
+`23502`. They are stable across versions and much more precise than the message,
+which is why they appear throughout this article. `23502` means a `NOT NULL` was
+violated, `23505` means a unique constraint was violated, and `23514` means a
+`CHECK` was violated.
+
 ## The measurement
 
 Four migrations, each applied twice: once to an empty Postgres container, once
