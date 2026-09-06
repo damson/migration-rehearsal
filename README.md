@@ -1,3 +1,5 @@
+![migration-rehearsal: a trace showing a migration applied against real rows and rolled back to the line it left, above the measured table. Adding a nullable column passes on both. NOT NULL with no default, a unique index over duplicates, and a CHECK existing rows violate all pass on an empty container and fail on real rows with 23502, 23505 and 23514. Three of four fail only where there is data. Your CI has none.](.github/social-preview/preview.png)
+
 # migration-rehearsal
 
 [![CI](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml/badge.svg)](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml)
