@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "author": "Damien D. <devddagnet@gmail.com>",
-  "description": "Probe a pull request's migrations against real rows inside a rolled-back transaction: the article, two reference workflows and a tested reference implementation.",
+  "description": "Rehearse a pull request's migrations against real rows inside a rolled-back transaction: the article, two reference workflows and a tested reference implementation.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/damson/migration-rehearsal.git"
@@ -31,7 +31,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:placeholders": "node tools/check-placeholders.mjs",
-    "probe": "tsx reference/run-probe.ts",
+    "rehearse": "tsx reference/run-rehearsal.ts",
     "verify": "npm run typecheck && npm run test && npm run check:placeholders"
   },
   "dependencies": {

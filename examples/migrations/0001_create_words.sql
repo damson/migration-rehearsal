@@ -1,5 +1,5 @@
 -- An ordinary first migration, here so the self-test has a real schema to
--- probe rather than an empty database. Nothing about it is special.
+-- rehearsal rather than an empty database. Nothing about it is special.
 
 create table if not exists words (
   id bigint generated always as identity primary key,

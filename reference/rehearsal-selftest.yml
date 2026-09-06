@@ -1,6 +1,6 @@
-name: Probe self-test
+name: Rehearsal self-test
 
-# Proves the probe's guards can fail, against a throwaway Postgres that costs
+# Proves the rehearsal's guards can fail, against a throwaway Postgres that costs
 # nothing to break.
 #
 # A gate nobody has watched refuse is decoration. Every check here comes in a
@@ -13,10 +13,10 @@ name: Probe self-test
 # be gone, and the table that escaped the rollback must still be there. Without
 # the second, an alarm that fired on every run would pass this job.
 #
-# PLACEHOLDERS, as in probe-migrations.yml:
+# PLACEHOLDERS, as in rehearse-migrations.yml:
 #
 #   <MIGRATIONS_DIR>   where migrations live
-#   <PROBE_DIR>        where probe.ts and run-probe.ts live
+#   <REHEARSAL_DIR>        where rehearsal.ts and run-rehearsal.ts live
 #   <PRELUDE_SQL>      optional: SQL creating whatever roles and schemas your
 #                      migrations assume a managed provider supplies. Delete the
 #                      step if your migrations only touch `public`.
@@ -29,8 +29,8 @@ on:
   pull_request:
     paths:
       - '<MIGRATIONS_DIR>/**.sql'
-      - '<PROBE_DIR>/**'
-      - '.github/workflows/probe-selftest.yml'
+      - '<REHEARSAL_DIR>/**'
+      - '.github/workflows/rehearsal-selftest.yml'
   push:
     branches: [main]
 
@@ -47,7 +47,7 @@ jobs:
         image: postgres:17
         env:
           POSTGRES_PASSWORD: testpw
-          POSTGRES_DB: probe_selftest
+          POSTGRES_DB: rehearsal_selftest
         ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U postgres"
@@ -58,12 +58,12 @@ jobs:
       PGPASSWORD: testpw
       PGHOST: localhost
       PGUSER: postgres
-      PGDATABASE: probe_selftest
-      PROBE_MIGRATIONS_DIR: <MIGRATIONS_DIR>
+      PGDATABASE: rehearsal_selftest
+      REHEARSAL_MIGRATIONS_DIR: <MIGRATIONS_DIR>
       # The override is accepted only against a loopback host. One of the steps
       # below proves it refuses everything else rather than quietly ignoring the
       # mismatch.
-      PROBE_TARGET_DB_URL: postgresql://postgres:testpw@localhost:5432/probe_selftest
+      REHEARSAL_TARGET_DB_URL: postgresql://postgres:testpw@localhost:5432/rehearsal_selftest
     steps:
       - uses: actions/checkout@v5
 
@@ -88,7 +88,7 @@ jobs:
           # will later touch this table: the real one carries columns a guess
           # will miss, and the tool's own insert then fails in a way that reads
           # like a migration bug. It is safe HERE because no step in this job
-          # runs the tool. The probe only ever reads `version` from it.
+          # runs the tool. The rehearsal only ever reads `version` from it.
           psql -v ON_ERROR_STOP=1 -c 'create schema supabase_migrations'
           psql -v ON_ERROR_STOP=1 -c 'create table supabase_migrations.schema_migrations (version text primary key)'
           n=0
@@ -105,8 +105,8 @@ jobs:
           # A table with a row in it, so the data-shape step below has something
           # to violate. A NOT NULL over an EMPTY table passes for the same
           # uninteresting reason the correct version does.
-          psql -v ON_ERROR_STOP=1 -c 'create table probe_target (id int)'
-          psql -v ON_ERROR_STOP=1 -c 'insert into probe_target (id) values (1)'
+          psql -v ON_ERROR_STOP=1 -c 'create table rehearsal_target (id int)'
+          psql -v ON_ERROR_STOP=1 -c 'insert into rehearsal_target (id) values (1)'
 
       # ---- the must-pass half -------------------------------------------------
 
@@ -118,12 +118,12 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          npx tsx <PROBE_DIR>/run-probe.ts --allow-loopback-target > current.log 2>&1
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts --allow-loopback-target > current.log 2>&1
           code=$?
           set -e
           cat current.log
           if [ $code -ne 0 ]; then
-            echo '::error::The probe failed against a current ledger, where it should have had nothing to do.'
+            echo '::error::The rehearsal failed against a current ledger, where it should have had nothing to do.'
             exit 1
           fi
           grep -q 'Nothing was applied and nothing was checked' current.log
@@ -132,24 +132,24 @@ jobs:
         run: |
           set -euo pipefail
           trap 'rm -f <MIGRATIONS_DIR>/2099*.sql' EXIT
-          echo 'create table probe_ok (id int);' > <MIGRATIONS_DIR>/2099010100000100_probe_ok.sql
+          echo 'create table rehearsal_ok (id int);' > <MIGRATIONS_DIR>/2099010100000100_rehearsal_ok.sql
           set +e
-          npx tsx <PROBE_DIR>/run-probe.ts --allow-loopback-target > ok.log 2>&1
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts --allow-loopback-target > ok.log 2>&1
           code=$?
           set -e
           cat ok.log
           if [ $code -ne 0 ]; then
-            echo '::error::The probe refused a clean pending migration.'
+            echo '::error::The rehearsal refused a clean pending migration.'
             exit 1
           fi
-          grep -q '2099010100000100_probe_ok.sql' ok.log
+          grep -q '2099010100000100_rehearsal_ok.sql' ok.log
           grep -q 'nothing was written' ok.log
           # The assertion that makes the rest mean anything: the table the
-          # migration created must NOT be here. Everything above is the probe
+          # migration created must NOT be here. Everything above is the rehearsal
           # describing itself; this is the database answering.
-          left=$(psql -tAX -c "select count(*) from pg_class where relname = 'probe_ok'")
+          left=$(psql -tAX -c "select count(*) from pg_class where relname = 'rehearsal_ok'")
           if [ "$left" != "0" ]; then
-            echo "::error::probe_ok survived the rollback ($left). The probe WROTE to its target."
+            echo "::error::rehearsal_ok survived the rollback ($left). The rehearsal WROTE to its target."
             exit 1
           fi
           echo "Applied and rolled back, nothing left. OK"
@@ -162,15 +162,15 @@ jobs:
           trap 'rm -f <MIGRATIONS_DIR>/2099*.sql' EXIT
           # The failure class this whole pattern exists for: valid SQL, applies
           # to an empty database, cannot apply where rows already live.
-          echo 'alter table probe_target add column probe_nn text not null;' \
-            > <MIGRATIONS_DIR>/2099010100000200_probe_notnull.sql
+          echo 'alter table rehearsal_target add column rehearsal_nn text not null;' \
+            > <MIGRATIONS_DIR>/2099010100000200_rehearsal_notnull.sql
           set +e
-          npx tsx <PROBE_DIR>/run-probe.ts --allow-loopback-target > notnull.log 2>&1
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts --allow-loopback-target > notnull.log 2>&1
           code=$?
           set -e
           cat notnull.log
           if [ $code -eq 0 ]; then
-            echo '::error::The probe passed a NOT NULL over existing rows. The gate did not fire.'
+            echo '::error::The rehearsal passed a NOT NULL over existing rows. The gate did not fire.'
             exit 1
           fi
           if ! grep -q '23502' notnull.log; then
@@ -184,10 +184,10 @@ jobs:
         run: |
           set -euo pipefail
           trap 'rm -f <MIGRATIONS_DIR>/2099*.sql' EXIT
-          printf 'create table probe_tc (id int);\ncommit;\n' \
-            > <MIGRATIONS_DIR>/2099010100000300_probe_commit.sql
+          printf 'create table rehearsal_tc (id int);\ncommit;\n' \
+            > <MIGRATIONS_DIR>/2099010100000300_rehearsal_commit.sql
           set +e
-          npx tsx <PROBE_DIR>/run-probe.ts --allow-loopback-target > tc.log 2>&1
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts --allow-loopback-target > tc.log 2>&1
           code=$?
           set -e
           cat tc.log
@@ -207,35 +207,35 @@ jobs:
         run: |
           set -euo pipefail
           trap 'rm -f <MIGRATIONS_DIR>/2099*.sql' EXIT
-          printf 'create table probe_escape (id int);\nend;\ncreate table probe_after (id int);\n' \
-            > <MIGRATIONS_DIR>/2099010100000400_probe_end.sql
+          printf 'create table rehearsal_escape (id int);\nend;\ncreate table rehearsal_after (id int);\n' \
+            > <MIGRATIONS_DIR>/2099010100000400_rehearsal_end.sql
           set +e
-          npx tsx <PROBE_DIR>/run-probe.ts --allow-loopback-target > escape.log 2>&1
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts --allow-loopback-target > escape.log 2>&1
           code=$?
           set -e
           cat escape.log
           if [ $code -eq 0 ]; then
-            echo '::error::A migration that committed mid-probe was reported as clean.'
+            echo '::error::A migration that committed mid-rehearsal was reported as clean.'
             exit 1
           fi
           grep -q "SAVEPOINT WAS DESTROYED" escape.log
           # And the escape was REAL, not a false alarm: the table is still here.
           # Without this, an alarm that fires on every run would pass.
-          survived=$(psql -tAX -c "select count(*) from pg_class where relname = 'probe_escape'")
+          survived=$(psql -tAX -c "select count(*) from pg_class where relname = 'rehearsal_escape'")
           if [ "$survived" != "1" ]; then
             echo "::error::The alarm fired but nothing actually committed ($survived). It is firing for the wrong reason."
             exit 1
           fi
           echo "Escape detected, and it was a real one. OK"
-          psql -v ON_ERROR_STOP=1 -c 'drop table if exists probe_escape'
+          psql -v ON_ERROR_STOP=1 -c 'drop table if exists rehearsal_escape'
 
       - name: Must refuse the loopback override against a real host
         env:
-          PROBE_TARGET_DB_URL: postgresql://postgres.abcdefghijklmnop:pw@aws-0-eu-west-2.pooler.example.com:5432/postgres
+          REHEARSAL_TARGET_DB_URL: postgresql://postgres.abcdefghijklmnop:pw@aws-0-eu-west-2.pooler.example.com:5432/postgres
         run: |
           set -euo pipefail
           set +e
-          npx tsx <PROBE_DIR>/run-probe.ts --allow-loopback-target > host.log 2>&1
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts --allow-loopback-target > host.log 2>&1
           code=$?
           set -e
           cat host.log
@@ -250,13 +250,13 @@ jobs:
         run: |
           set -euo pipefail
           set +e
-          PROBE_EXPECTED_PROJECT_REF=xxxxxxxxxxxxxxxxxxxx \
-            npx tsx <PROBE_DIR>/run-probe.ts > noflag.log 2>&1
+          REHEARSAL_EXPECTED_PROJECT_REF=xxxxxxxxxxxxxxxxxxxx \
+            npx tsx <REHEARSAL_DIR>/run-rehearsal.ts > noflag.log 2>&1
           code=$?
           set -e
           cat noflag.log
           if [ $code -eq 0 ]; then
-            echo '::error::The probe ran against an unverified target with no override. The default is not fail-closed.'
+            echo '::error::The rehearsal ran against an unverified target with no override. The default is not fail-closed.'
             exit 1
           fi
           echo "Refused without the override. OK"

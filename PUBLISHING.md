@@ -7,10 +7,10 @@ the docs are written for strangers, and CI runs on every push.
 
 ## The thing that used to block this is done
 
-`reference/probe-selftest.yml` now runs here, with its placeholders substituted,
+`reference/rehearsal-selftest.yml` now runs here, with its placeholders substituted,
 against a Postgres 17 service container, on every push and pull request. Every
 guard has been watched refusing for the stated reason, including the two
-assertions that come from `pg_class` rather than from the probe's own report.
+assertions that come from `pg_class` rather than from the rehearsal's own report.
 
 The article's argument is that a check nobody has watched refuse is decoration.
 That sentence no longer describes this repository.
@@ -18,7 +18,7 @@ That sentence no longer describes this repository.
 ## Settled since
 
 **The name is `migration-rehearsal`.** It names what the technique gives you
-rather than the mechanism that performs it, which stays a probe in the code and
+rather than the mechanism that performs it, which stays a rehearsal in the code and
 in the article. The README says so in its opening, because a reader meeting both
 words deserves to be told they are not two things.
 

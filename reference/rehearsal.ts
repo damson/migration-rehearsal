@@ -1,7 +1,7 @@
-// The probe's decisions, and its transaction as a sequence of statements.
+// The rehearsal's decisions, and its transaction as a sequence of statements.
 //
 // Everything here is pure or takes an injected `Queryable`, so all of it is
-// reachable from a test without a database. The IO lives in run-probe.ts: a
+// reachable from a test without a database. The IO lives in run-rehearsal.ts: a
 // module that calls `main()` at import time cannot be imported by a test
 // without running the job.
 //
@@ -10,7 +10,7 @@
 //
 //   - is `rollback` issued when a migration throws, and when the savepoint
 //     statement itself throws;
-//   - is the transaction left unopened when there is nothing to probe;
+//   - is the transaction left unopened when there is nothing to rehearse;
 //   - does a failure stop the run, so later migrations are never sent against
 //     a state missing this one;
 //   - does a destroyed savepoint become an alarm rather than a clean report;
@@ -104,7 +104,7 @@ const MARK: Record<Level, string> = { ok: 'ok  ', warn: 'WARN', fail: 'FAIL' };
 /** The report, as markdown a job summary can swallow whole. */
 export function render(findings: readonly Finding[]): string {
   const lines = findings.map((f) => `- \`${MARK[f.level]}\` **${f.check}**: ${f.message}`);
-  return [`### Migration probe: ${worst(findings).toUpperCase()}`, '', ...lines, ''].join('\n');
+  return [`### Migration rehearsal: ${worst(findings).toUpperCase()}`, '', ...lines, ''].join('\n');
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -244,7 +244,7 @@ export function stripComments(sql: string): string {
 }
 
 /**
- * Statements that would END the probe's transaction and let a migration's
+ * Statements that would END the rehearsal's transaction and let a migration's
  * writes survive. Two of them, and the two that are absent matter as much.
  *
  * `begin` and `start transaction` are NOT here. Banning them is the obvious
@@ -283,9 +283,9 @@ export function transactionControlFindings(file: string, hits: readonly string[]
   return [
     fail(
       `transaction control ${file}`,
-      `contains ${unique}, which would end the probe's transaction and let this migration's writes ` +
+      `contains ${unique}, which would end the rehearsal's transaction and let this migration's writes ` +
         'survive against a live database. A migration never manages its own transaction here: the ' +
-        'migration tool wraps each file, and so does the probe. Remove the statement.',
+        'migration tool wraps each file, and so does the rehearsal. Remove the statement.',
     ),
   ];
 }
@@ -300,10 +300,10 @@ export function migrationRefusals(
   dir: string,
 ): Finding[] {
   // Asserted, not assumed. An empty directory makes the loop below vacuous, so
-  // without this the probe reports a clean bill of health for a run that read
+  // without this the rehearsal reports a clean bill of health for a run that read
   // no files at all.
   if (files.length === 0) {
-    return [fail('migrations', `no .sql files in ${dir}: refusing to report a probe that read nothing.`)];
+    return [fail('migrations', `no .sql files in ${dir}: refusing to report a rehearsal that read nothing.`)];
   }
   return files.flatMap((file) => transactionControlFindings(file, transactionControl(read(file))));
 }
@@ -332,7 +332,7 @@ export function preDialFindings(input: {
     findings.push(...input.targetChecks(input.url, input.expectedRef ?? ''));
   }
   // The migration checks run either way. The override is about which DATABASE
-  // may be reached and says nothing about what the files may contain: a probe
+  // may be reached and says nothing about what the files may contain: a rehearsal
   // against a throwaway container still must not commit.
   findings.push(...migrationRefusals(input.files, input.read, input.dir));
   return findings;
@@ -342,10 +342,10 @@ export function preDialFindings(input: {
  * Which gate a failure belongs to. Telling these apart is the point.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export type Blame = 'data-shape' | 'offline-visible' | 'probe-limit' | 'unknown';
+export type Blame = 'data-shape' | 'offline-visible' | 'rehearsal-limit' | 'unknown';
 
 const BLAME: Record<string, Blame> = {
-  // Needs rows. The set this probe exists for, and the set no empty container
+  // Needs rows. The set this rehearsal exists for, and the set no empty container
   // can reach.
   '23502': 'data-shape', // not_null_violation
   '23503': 'data-shape', // foreign_key_violation
@@ -367,11 +367,11 @@ const BLAME: Record<string, Blame> = {
   '42883': 'offline-visible', // undefined_function
   '3F000': 'offline-visible', // invalid_schema_name
   // Not the migration's fault, and not a reason to block a pull request.
-  '42501': 'probe-limit', // insufficient_privilege: the probe role, not the SQL
-  '25001': 'probe-limit', // active_sql_transaction, e.g. CREATE INDEX CONCURRENTLY
-  '0A000': 'probe-limit', // feature_not_supported inside a transaction block
-  '55P03': 'probe-limit', // lock_not_available
-  '57014': 'probe-limit', // query_canceled: a timeout, not a verdict
+  '42501': 'rehearsal-limit', // insufficient_privilege: the rehearsal role, not the SQL
+  '25001': 'rehearsal-limit', // active_sql_transaction, e.g. CREATE INDEX CONCURRENTLY
+  '0A000': 'rehearsal-limit', // feature_not_supported inside a transaction block
+  '55P03': 'rehearsal-limit', // lock_not_available
+  '57014': 'rehearsal-limit', // query_canceled: a timeout, not a verdict
 };
 
 export function blameFor(code: string | undefined): Blame {
@@ -392,10 +392,10 @@ export function blameNote(blame: Blame): string {
         'this already. Failing here while that job is green means the two disagree about the schema: ' +
         "check whether the target's ledger matches the repository before changing the migration."
       );
-    case 'probe-limit':
+    case 'rehearsal-limit':
       return (
-        'this is the probe reaching its own limit, not a defect in the migration. A statement that cannot ' +
-        'run inside a transaction cannot be probed by one, and a migration tool that wraps each file the ' +
+        'this is the rehearsal reaching its own limit, not a defect in the migration. A statement that cannot ' +
+        'run inside a transaction cannot be rehearsed by one, and a migration tool that wraps each file the ' +
         'same way would fail there too: verify by hand rather than trusting either result.'
       );
     default:
@@ -429,11 +429,11 @@ export function failureFinding(file: string, err: SqlError): Finding {
   const code = err.code ? ` [${err.code}]` : '';
   const message = (err.message ?? 'no message').split('\n')[0];
   return {
-    check: `probe ${file}`,
-    // A probe-limit failure is information. Blocking a pull request because the
-    // probe cannot express the statement would make the gate the thing to route
+    check: `rehearsal ${file}`,
+    // A rehearsal-limit failure is information. Blocking a pull request because the
+    // rehearsal cannot express the statement would make the gate the thing to route
     // around, which is how a required check stops being read.
-    level: blame === 'probe-limit' ? 'warn' : 'fail',
+    level: blame === 'rehearsal-limit' ? 'warn' : 'fail',
     message: `${message}${code}. ${blameNote(blame)}`,
   };
 }
@@ -465,22 +465,22 @@ export function unappliedFiles(files: readonly string[], ledger: readonly string
 }
 
 /**
- * Nothing to probe, said as its own finding.
+ * Nothing to rehearse, said as its own finding.
  *
  * An empty run is the ordinary outcome for a pull request that touches no
- * migration, and it must not read as "the probe passed": `worst([])` is `ok`,
+ * migration, and it must not read as "the rehearsal passed": `worst([])` is `ok`,
  * so an empty finding list would report a green gate that never ran.
  */
 export function nothingToProbe(applied: number): Finding {
   return ok(
-    'probe',
+    'rehearsal',
     `no migration in this branch is missing from the target's ledger (${applied} already applied). ` +
       'Nothing was applied and nothing was checked.',
   );
 }
 
 export function appliedFinding(file: string): Finding {
-  return ok(`probe ${file}`, 'applied inside the transaction');
+  return ok(`rehearsal ${file}`, 'applied inside the transaction');
 }
 
 export function rolledBackFinding(count: number): Finding {
@@ -500,9 +500,9 @@ export function rolledBackFinding(count: number): Finding {
 export function escapedFinding(detail: string): Finding {
   return fail(
     'rollback',
-    `THE PROBE'S SAVEPOINT WAS DESTROYED (${detail}), which happens when a statement committed. ` +
+    `THE REHEARSAL'S SAVEPOINT WAS DESTROYED (${detail}), which happens when a statement committed. ` +
       'Assume the target database was modified and check it by hand before merging anything: the ' +
-      'rollback that makes this probe safe did not happen.',
+      'rollback that makes this rehearsal safe did not happen.',
   );
 }
 
@@ -516,11 +516,11 @@ export function escapedFinding(detail: string): Finding {
  */
 export function shapeFinding(before: number, after: number): Finding {
   if (before === after) {
-    return ok('shape', `public schema holds ${after} objects, unchanged across the probe.`);
+    return ok('shape', `public schema holds ${after} objects, unchanged across the rehearsal.`);
   }
   return fail(
     'shape',
-    `public schema held ${before} objects before the probe and ${after} after. The rollback did not ` +
+    `public schema held ${before} objects before the rehearsal and ${after} after. The rollback did not ` +
       'restore it; inspect the target before merging.',
   );
 }
@@ -530,7 +530,7 @@ export function shapeFinding(before: number, after: number): Finding {
  *
  * The target running ahead of a feature branch is ordinary: the branch was cut
  * before something else merged. It matters only because those versions are why
- * a file might not be probed, so it is said out loud rather than left to be
+ * a file might not be rehearsed, so it is said out loud rather than left to be
  * inferred from a short list.
  */
 export function strayFinding(stray: readonly string[]): Finding[] {
@@ -539,7 +539,7 @@ export function strayFinding(stray: readonly string[]): Finding[] {
     warn(
       'ledger ahead',
       `the target has ${stray.length} version(s) this branch does not: ${stray.join(', ')}. ` +
-        'Ordinary when the branch predates a merge; rebase if the probe result looks unrelated to your change.',
+        'Ordinary when the branch predates a merge; rebase if the rehearsal result looks unrelated to your change.',
     ),
   ];
 }
@@ -553,14 +553,14 @@ export interface Queryable {
   query<R = unknown>(sql: string): Promise<QueryResult<R>>;
 }
 
-export const SAVEPOINT = 'migration_probe_root';
+export const SAVEPOINT = 'migration_rehearsal_root';
 
 /** How many public objects the target holds: the measure the rollback must restore. */
 export const SHAPE_QUERY =
   "select count(*)::int as n from pg_class where relnamespace = 'public'::regnamespace";
 
 /**
- * The probe holds DDL locks on live tables for as long as its transaction is
+ * The rehearsal holds DDL locks on live tables for as long as its transaction is
  * open, which on a shared environment means everything else waits behind it.
  * Both timeouts are deliberately short: a migration that cannot get its lock in
  * five seconds is one for a maintenance window, not one to hold the environment
@@ -579,7 +579,7 @@ async function count(client: Queryable, sql: string): Promise<number> {
  * Never throws for a migration's sake: a failure is a finding, because the
  * caller has to print the findings gathered so far either way.
  */
-export async function probe(
+export async function rehearsal(
   client: Queryable,
   files: readonly string[],
   read: (file: string) => string,

@@ -1,4 +1,4 @@
-name: Probe migrations
+name: Rehearse migrations
 
 # Applies a pull request's unapplied migrations to a live non-production
 # database inside a transaction that is rolled back, and fails the pull request
@@ -6,14 +6,14 @@ name: Probe migrations
 #
 # PLACEHOLDERS. Every value written in angle brackets below has to be replaced
 # before this file will run. That is deliberate: a half-adapted copy fails
-# loudly instead of quietly probing the wrong database.
+# loudly instead of quietly rehearsing the wrong database.
 #
 #   <MIGRATIONS_DIR>          where migrations live, e.g. supabase/migrations
-#   <PROBE_DIR>               where probe.ts and run-probe.ts live
-#   <PROBE_ENVIRONMENT>       the environment that holds the credential
-#   <PROBE_DB_URL_SECRET>     environment secret: the target connection string
+#   <REHEARSAL_DIR>               where rehearsal.ts and run-rehearsal.ts live
+#   <REHEARSAL_ENVIRONMENT>       the environment that holds the credential
+#   <REHEARSAL_DB_URL_SECRET>     environment secret: the target connection string
 #   <EXPECTED_PROJECT_REF>    repository or environment variable: which database
-#                             the probe is allowed to touch
+#                             the rehearsal is allowed to touch
 #   <NODE_VERSION>            e.g. '20'
 #   <SECRETS_DOC>             where the setup checklist lives, for the message
 #                             a reader sees when the credential is absent
@@ -29,11 +29,11 @@ name: Probe migrations
 # Three of the four failure classes are invisible to any offline gate. Without
 # this job they surface on the merge commit, after the pull request is closed.
 #
-# WHY IT IS SAFE. run-probe.ts refuses a target that is not the expected project
+# WHY IT IS SAFE. run-rehearsal.ts refuses a target that is not the expected project
 # before dialling, refuses any migration carrying transaction control before
 # dialling, proves the rollback happened with a savepoint, and measures the
 # target's object count either side. The guards are unit-tested, and the
-# companion workflow probe-selftest.yml exercises them end to end against a
+# companion workflow rehearsal-selftest.yml exercises them end to end against a
 # throwaway Postgres.
 #
 # WHY `pull_request` AND NOT `pull_request_target`. This job feeds the pull
@@ -58,25 +58,25 @@ on:
   pull_request:
     paths:
       - '<MIGRATIONS_DIR>/**.sql'
-      - '<PROBE_DIR>/**'
-      - '.github/workflows/probe-migrations.yml'
+      - '<REHEARSAL_DIR>/**'
+      - '.github/workflows/rehearse-migrations.yml'
 
 permissions:
   contents: read
 
 concurrency:
   # Per pull request, and cancellable: a second push supersedes the first, and
-  # two probes holding DDL locks on the same database at once would block each
+  # two rehearsals holding DDL locks on the same database at once would block each
   # other and everything else with them.
-  group: probe-migrations-${{ github.event.pull_request.number }}
+  group: rehearsal-migrations-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  probe:
-    name: probe migrations against real rows
+  rehearsal:
+    name: rehearsal migrations against real rows
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: <PROBE_ENVIRONMENT>
+    environment: <REHEARSAL_ENVIRONMENT>
     steps:
       - uses: actions/checkout@v5
 
@@ -88,11 +88,11 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Probe this branch's migrations against real rows
+      - name: Rehearse this branch's migrations against real rows
         env:
-          PROBE_TARGET_DB_URL: ${{ secrets.<PROBE_DB_URL_SECRET> }}
-          PROBE_EXPECTED_PROJECT_REF: ${{ vars.<EXPECTED_PROJECT_REF> }}
-          PROBE_MIGRATIONS_DIR: <MIGRATIONS_DIR>
+          REHEARSAL_TARGET_DB_URL: ${{ secrets.<REHEARSAL_DB_URL_SECRET> }}
+          REHEARSAL_EXPECTED_PROJECT_REF: ${{ vars.<EXPECTED_PROJECT_REF> }}
+          REHEARSAL_MIGRATIONS_DIR: <MIGRATIONS_DIR>
         run: |
           set -euo pipefail
           # Two ways the credential is legitimately absent: the setup checklist
@@ -102,20 +102,20 @@ jobs:
           # This job must NOT be a required status check until the secret
           # exists, because a check that passes without running is worse than no
           # check at all.
-          if [ -z "${PROBE_TARGET_DB_URL:-}" ] || [ -z "${PROBE_EXPECTED_PROJECT_REF:-}" ]; then
+          if [ -z "${REHEARSAL_TARGET_DB_URL:-}" ] || [ -z "${REHEARSAL_EXPECTED_PROJECT_REF:-}" ]; then
             {
-              echo '### Migration probe DID NOT RUN'
+              echo '### Migration rehearsal DID NOT RUN'
               echo
               echo 'This pull request touches a migration and nothing checked it against real rows.'
               echo 'The three failure classes this job exists to catch, 23502, 23505 and 23514, are'
               echo 'invisible to the throwaway-Postgres job, so a green checks list here says the'
               echo 'migration is syntactically valid and nothing more.'
               echo
-              echo 'Cause: either the probe credential and expected reference are not configured'
+              echo 'Cause: either the rehearsal credential and expected reference are not configured'
               echo '(see <SECRETS_DOC>), or this pull request is from a fork, where GitHub withholds'
               echo 'secrets deliberately.'
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning title=Migration probe did not run::No credential in this run. This pull request's migrations were never applied to real rows."
+            echo "::warning title=Migration rehearsal did not run::No credential in this run. This pull request's migrations were never applied to real rows."
             exit 0
           fi
-          npx tsx <PROBE_DIR>/run-probe.ts | tee -a "$GITHUB_STEP_SUMMARY"
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts | tee -a "$GITHUB_STEP_SUMMARY"
