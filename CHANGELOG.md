@@ -10,7 +10,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The repository is `migration-rehearsal`. It was `migration-probe-pattern`, a
   working name. Nothing has been released under either, and GitHub redirects the
-  old URL. The mechanism is still called a probe, in the code and in the article.
+  old URL.
+- The mechanism is a **rehearsal** throughout, where it used to be a probe. The
+  reference files are `rehearsal.ts`, `run-rehearsal.ts`,
+  `rehearse-migrations.yml` and `rehearsal-selftest.yml`; the article is
+  `docs/rehearsing-migrations-against-real-rows.md`; the script is
+  `npm run rehearse`; and the workflow placeholders are `<REHEARSAL_DIR>`,
+  `<REHEARSAL_ENVIRONMENT>` and `<REHEARSAL_DB_URL_SECRET>`. Anyone who had
+  already copied the reference files renames those three placeholders in their
+  own workflow, and nothing else.
+- One name is deliberately unchanged: the self-test's job is still
+  `probe guards and rollback, on throwaway Postgres`, because it is a required
+  status check and renaming it needs the branch protection updated in the same
+  breath. Tracked separately.
 
 ## [0.1.0]
 
@@ -18,17 +30,17 @@ First version. Not yet public.
 
 ### Added
 
-- The article, `docs/probing-migrations-against-real-rows.md`: the measured
+- The article, `docs/rehearsing-migrations-against-real-rows.md`: the measured
   failure-class table, the four guards in the order they apply, the reasoning for
   the two transaction-control keywords that are deliberately not banned, the
   SQLSTATE classification, the `pull_request` over `pull_request_target`
   argument, the environment-scoped secret argument, and the self-test.
-- `reference/probe-migrations.yml`, the pull request gate, parameterised.
-- `reference/probe-selftest.yml`, the must-pass and must-fail proof against a
+- `reference/rehearse-migrations.yml`, the pull request gate, parameterised.
+- `reference/rehearsal-selftest.yml`, the must-pass and must-fail proof against a
   throwaway Postgres.
-- `reference/probe.ts` and `reference/run-probe.ts`, a reference implementation
+- `reference/rehearsal.ts` and `reference/run-rehearsal.ts`, a reference implementation
   split so the decisions are testable without a database.
-- `reference/probe.test.ts`, 30 tests over the guards, the classification and the
+- `reference/rehearsal.test.ts`, 30 tests over the guards, the classification and the
   transaction sequence.
 - `tools/check-placeholders.mjs`, which parses both reference workflows and holds
   the placeholder list and the README table to each other.

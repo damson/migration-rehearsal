@@ -24,7 +24,7 @@ through a release pull request. See CONTRIBUTING.md § Branching.
 <!-- Delete this section if it does not. -->
 
 - [ ] The guard is not weakened, or the pull request says what replaces it
-- [ ] A must-fail case exists in `probe-selftest.yml`, and I watched it go red
+- [ ] A must-fail case exists in `rehearsal-selftest.yml`, and I watched it go red
       before making it pass
 
 <!--

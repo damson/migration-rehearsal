@@ -53,11 +53,11 @@ Two rules follow from that, and both have cost real projects real time:
 
 ## What lives where
 
-- `docs/probing-migrations-against-real-rows.md` is the article. It is the
+- `docs/rehearsing-migrations-against-real-rows.md` is the article. It is the
   primary artefact.
-- `reference/probe.ts` holds every decision, and is fully testable without a
+- `reference/rehearsal.ts` holds every decision, and is fully testable without a
   database.
-- `reference/run-probe.ts` holds the plumbing: environment, filesystem, the
+- `reference/run-rehearsal.ts` holds the plumbing: environment, filesystem, the
   Postgres client. It calls `main()` at import time, which is exactly why the
   decisions are not in it.
 - `reference/*.yml` are the two reference workflows, full of placeholders.
@@ -74,7 +74,7 @@ say, in the pull request, what replaces it. Adding a guard is easy to accept.
 Removing one needs an argument.
 
 **A check that cannot fail is not a check.** If you add a guard, add its
-must-fail case to `probe-selftest.yml`, and if you can, watch it go red before
+must-fail case to `rehearsal-selftest.yml`, and if you can, watch it go red before
 you make it pass. The article says this about the pattern, and it applies to the
 repository too.
 
@@ -82,7 +82,7 @@ repository too.
 
 There is no linter to argue with. Match the file you are editing.
 
-Comments explain **why**, not what. Much of the value in `probe.ts` is in the
+Comments explain **why**, not what. Much of the value in `rehearsal.ts` is in the
 comments recording why something is deliberately absent, and those are worth
 preserving even when the code around them changes.
 

@@ -22,16 +22,16 @@ flaw that gets copied into other people's pipelines.
 
 Specifically:
 
-- A way for a migration to escape the probe's transaction that the guards do not
+- A way for a migration to escape the rehearsal's transaction that the guards do not
   catch. Guard 2 is a text scan and is known to be incomplete, which is why guard
   3 exists, so the interesting case is one that gets past guard 3 as well.
-- A way to make the probe reach a database other than the expected one.
+- A way to make the rehearsal reach a database other than the expected one.
 - A workflow injection path in either reference workflow. Neither interpolates
   pull request titles, bodies, branch names or commit messages into a `run:`
   step, and a place where that is not true is a real finding.
 - Anything that would cause a credential, connection string or password to be
   printed to a log or a job summary.
-- A case where the probe reports success without having run, which is the failure
+- A case where the rehearsal reports success without having run, which is the failure
   mode the whole design is organised against.
 
 ## What is out of scope

@@ -1,4 +1,4 @@
-# Probing migrations against real rows
+# Rehearsing migrations against real rows
 
 Most projects that run migrations in CI check them against an empty database.
 A throwaway Postgres container starts, every migration is applied to it in
@@ -78,9 +78,9 @@ that is rolled back before the connection closes.
 
 ```
 begin;
-savepoint probe_root;
+savepoint rehearsal_root;
   <each migration the target has not applied yet>
-rollback to savepoint probe_root;
+rollback to savepoint rehearsal_root;
 rollback;
 ```
 
@@ -96,11 +96,11 @@ rows, not the same rows.
 ## The rollback is the entire safety argument
 
 Everything else in this pattern exists to protect one property: that nothing the
-probe applies survives it. Four guards, applied in this order.
+rehearsal applies survives it. Four guards, applied in this order.
 
 ### Guard 1: refuse a target that is not the expected one, before dialling
 
-The probe applies arbitrary SQL to whatever it is pointed at. That is its
+The rehearsal applies arbitrary SQL to whatever it is pointed at. That is its
 function, so the only meaningful protection is refusing to point it anywhere
 unexpected.
 
@@ -122,7 +122,7 @@ out of a CI log reaches a real database with its only target guard switched off.
 
 ### Guard 2: refuse migrations that manage their own transaction, before dialling
 
-A `COMMIT` inside a migration ends the probe's transaction, and everything after
+A `COMMIT` inside a migration ends the rehearsal's transaction, and everything after
 it is written for real. So migration files are scanned before anything is
 dialled, and a file containing `commit` or `rollback` is refused.
 
@@ -156,7 +156,7 @@ commits. The text guard cannot see every spelling of the escape.
 Open a savepoint immediately after `BEGIN`, and roll back to it before rolling
 back the transaction.
 
-A `COMMIT` destroys the savepoint. So if anything committed mid-probe, the
+A `COMMIT` destroys the savepoint. So if anything committed mid-rehearsal, the
 `ROLLBACK TO SAVEPOINT` statement fails, and that failure is the alarm. The
 escape is reported rather than assumed impossible.
 
@@ -188,7 +188,7 @@ actually there.
 
 ## Reporting: which gate owns this failure
 
-A probe that just says "the migration failed" sends people to fix the wrong
+A rehearsal that just says "the migration failed" sends people to fix the wrong
 thing. The useful output names the class of failure, because the class decides
 what to do next.
 
@@ -196,7 +196,7 @@ SQLSTATE codes are enough to classify:
 
 - **data-shape** (`23502`, `23503`, `23505`, `23514`, `22001`, `22003`, `22P02`,
   `22007`): the migration is valid SQL and applies to an empty database, but the
-  target holds rows it cannot accommodate. This is the set the probe exists for.
+  target holds rows it cannot accommodate. This is the set the rehearsal exists for.
   The fix is almost always to split it: add the column nullable, backfill in a
   script, tighten in a follow-up migration.
 - **offline-visible** (`42601`, `42P01`, `42703`, `42P07`, `42710`, `42883`,
@@ -204,10 +204,10 @@ SQLSTATE codes are enough to classify:
   so it sees all of these already. Failing here while that job is green means the
   two disagree about the schema. That is drift worth naming, not a migration to
   fix blindly.
-- **probe-limit** (`42501`, `25001`, `0A000`, `55P03`, `57014`): the probe
+- **rehearsal-limit** (`42501`, `25001`, `0A000`, `55P03`, `57014`): the rehearsal
   reaching its own limit, not a defect in the migration. `CREATE INDEX
-  CONCURRENTLY` cannot run inside a transaction, so it cannot be probed by one.
-  **These warn rather than fail.** Blocking a pull request because the probe
+  CONCURRENTLY` cannot run inside a transaction, so it cannot be rehearsed by one.
+  **These warn rather than fail.** Blocking a pull request because the rehearsal
   cannot express the statement would make the gate the thing to route around,
   which is how a required check stops being read.
 - **unknown**: print the driver's message and classify nothing. A confident
@@ -264,7 +264,7 @@ environment on the job.
 
 Be honest about what this does not do. An environment can carry a
 deployment-branch policy, and it is tempting to think that policy gates the
-probe. It does not: a `pull_request` run's ref is `refs/pull/N/merge`, which no
+rehearsal. It does not: a `pull_request` run's ref is `refs/pull/N/merge`, which no
 branch policy matches.
 
 What it does buy is real, and it is blast radius. An environment secret is
@@ -272,15 +272,15 @@ readable only by a job that declares that environment. Every other workflow in
 the repository, including every scheduled job and every job someone adds later,
 cannot read this credential. A repository secret is readable by all of them.
 
-The credential itself should be a role scoped to what the probe needs, on a
+The credential itself should be a role scoped to what the rehearsal needs, on a
 non-production database, and the runner should never print a connection string, a
 password or a key. Printing the host and the database identifier is fine: those
 are not the secret.
 
 ## Operational details that are not optional
 
-**Concurrency, cancel in progress, keyed per pull request.** The probe holds DDL
-locks on live tables for as long as its transaction is open. Two probes running
+**Concurrency, cancel in progress, keyed per pull request.** The rehearsal holds DDL
+locks on live tables for as long as its transaction is open. Two rehearsals running
 at once block each other, and anything else using that database waits behind
 them. A second push should supersede the first rather than queue behind it.
 
@@ -303,14 +303,14 @@ live database produces failures that have nothing to do with the pull request.
 
 **Say when the target is ahead of the branch.** A target holding versions the
 branch does not have is ordinary: the branch was cut before something else
-merged. It matters only because those versions explain why a file was not probed,
+merged. It matters only because those versions explain why a file was not rehearsed,
 so it is worth one warning line rather than leaving it to be inferred.
 
 ## Proving the gate can fail
 
 A gate that has never been watched refuse is a gate nobody should trust, and this
 one has four guards whose failure modes are all invisible in normal operation.
-The probe's self-test runs against a throwaway Postgres, where breaking things
+The rehearsal's self-test runs against a throwaway Postgres, where breaking things
 costs nothing, and every check comes in a pair.
 
 The must-pass half:
@@ -333,16 +333,16 @@ they are the ones that carry the argument:
 
 ```bash
 # after the clean migration: the table it created must be GONE
-left=$(psql -tAX -c "select count(*) from pg_class where relname = 'probe_ok'")
+left=$(psql -tAX -c "select count(*) from pg_class where relname = 'rehearsal_ok'")
 [ "$left" = "0" ] || exit 1
 
 # after the escape: the table that committed must still be THERE
-survived=$(psql -tAX -c "select count(*) from pg_class where relname = 'probe_escape'")
+survived=$(psql -tAX -c "select count(*) from pg_class where relname = 'rehearsal_escape'")
 [ "$survived" = "1" ] || exit 1
 ```
 
-The first is the only evidence that the probe does not write to its target.
-Everything else in the log is the probe describing itself. The second is what
+The first is the only evidence that the rehearsal does not write to its target.
+Everything else in the log is the rehearsal describing itself. The second is what
 stops an alarm that fires on every run from passing this job: without it, a
 hard-wired failure would satisfy the must-fail half perfectly.
 
@@ -359,11 +359,11 @@ including forks, and it owns the failure classes an empty database can see. The
 two jobs answer different questions, and the classification above depends on both
 of them existing.
 
-The probe does not test that a migration is correct, only that it can apply. A
+The rehearsal does not test that a migration is correct, only that it can apply. A
 backfill that applies cleanly and writes the wrong values passes this gate.
 
 And it does not remove the need for care around the statements it cannot express.
-Anything that cannot run inside a transaction cannot be probed by one, and the
+Anything that cannot run inside a transaction cannot be rehearsed by one, and the
 honest output there is a warning that says so rather than a green tick.
 
 ## Cost

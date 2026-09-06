@@ -22,7 +22,7 @@ body:
     attributes:
       label: What happened
       description: >
-        Did the self-test pass? Did the probe catch something a pull request
+        Did the self-test pass? Did the rehearsal catch something a pull request
         would otherwise have merged? Did anything need changing beyond the
         placeholders?
     validations:
