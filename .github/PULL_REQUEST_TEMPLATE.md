@@ -6,7 +6,7 @@
     └─────────────────────────────────────────────────────────────────────┘
 
     ALWAYS PRESENT, four sections, however small the change:
-        👥 In plain words · 📋 What changed · ✅ Test plan · 🔍 Review
+        🔭 High level summary · 📋 What changed · ✅ Test plan · 🔍 Review
 
     CONDITIONAL, two sections. Each is wrapped in its own comment block
     below. If it does not apply, DELETE the block outright, header and all.
@@ -18,17 +18,17 @@
     Draft pull requests are welcome too: open it early and ask.
 -->
 
-## 👥 In plain words
+## 🔭 High level summary
 
 <!--
-    What is different for someone adopting this, in language a person who has
-    never written a migration gate can follow. One short paragraph.
+    The shape of the change in a few sentences: what it does, why it is here,
+    and anything a reviewer needs to know before the detail below makes sense.
 
-    The register to aim for:
-    "Before, a migration that would break on real data still passed the check,
-    because the check ran against an empty database. Now the same migration is
-    tried against a database that has rows in it, and the pull request is
-    blocked before anyone merges it."
+    Aim at the level someone wants before opening the diff, not a restatement of
+    it:
+    "Guard 2 now catches `end;` as well as `commit`, because `end` commits a
+    transaction and the guard did not know that. The article's guard-2 section
+    moves with it, and the self-test gains the matching must-fail case."
 -->
 
 ## 📋 What changed
