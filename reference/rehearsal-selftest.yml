@@ -39,7 +39,7 @@ permissions:
 
 jobs:
   selftest:
-    name: probe guards and rollback, on throwaway Postgres
+    name: rehearsal guards and rollback, on throwaway Postgres
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:

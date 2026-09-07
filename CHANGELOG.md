@@ -19,10 +19,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `<REHEARSAL_ENVIRONMENT>` and `<REHEARSAL_DB_URL_SECRET>`. Anyone who had
   already copied the reference files renames those three placeholders in their
   own workflow, and nothing else.
-- One name is deliberately unchanged: the self-test's job is still
-  `probe guards and rollback, on throwaway Postgres`, because it is a required
-  status check and renaming it needs the branch protection updated in the same
-  breath. Tracked separately.
+- The self-test's job is `rehearsal guards and rollback, on throwaway Postgres`,
+  the last name still carrying the old word. It went last and on its own,
+  because it is a required status check on `develop`: the rename and the branch
+  protection have to move together, or every open pull request waits on a check
+  name that no longer reports.
 
 ## [0.1.0]
 
