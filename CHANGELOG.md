@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `tools/readability.mjs`, a benchmark for the article: Flesch reading ease,
+  Flesch-Kincaid grade, Gunning fog, sentence and paragraph lengths, and a
+  check that the primer covers the terms it promises. It names the sentences a
+  reader is most likely to stop at, which is the useful output; a score is not
+  comprehension. Runs in `npm run verify` and in CI, where it is also watched
+  refusing a fixture written to break it. The article measures grade 9.0, mean
+  sentence 17 words.
+
 ### Changed
 
 - `reference/rehearsal.ts` exports `RehearsalFile` and `nothingToRehearse`,

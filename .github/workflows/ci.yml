@@ -81,3 +81,34 @@ jobs:
             exit 1
           fi
           echo "All repository-relative links resolve."
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # The article's primer is written so nothing later assumes prior
+      # knowledge, and its author cannot judge whether that worked: re-reading
+      # your own explanation tells you it is correct, never that it is
+      # followable. This measures the parts that are measurable and names the
+      # sentences a reader is most likely to stop at.
+      - name: The article stays readable
+        run: node tools/readability.mjs
+
+      # And the check is watched refusing, because a threshold that has only
+      # ever passed is indistinguishable from one that cannot fail. The fixture
+      # breaks three thresholds and omits the primer.
+      - name: The readability check can fail
+        run: |
+          set -euo pipefail
+          set +e
+          node tools/readability.mjs tools/fixtures/hard-to-read.md > hard.log 2>&1
+          code=$?
+          set -e
+          cat hard.log
+          if [ $code -eq 0 ]; then
+            echo '::error::The readability check passed a document written to break it.'
+            exit 1
+          fi
+          grep -q 'Flesch-Kincaid grade' hard.log
+          grep -q 'the primer section was not found' hard.log
+          echo "OK  refused, with $(grep -c '::error::' hard.log) finding(s)."

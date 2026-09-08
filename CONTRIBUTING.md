@@ -24,7 +24,7 @@ Node 20 or newer, and nothing else. No database is needed for the test suite.
 git clone https://github.com/damson/migration-rehearsal.git
 cd migration-rehearsal
 npm install
-npm run verify   # typecheck, tests, and the placeholder check. What CI runs.
+npm run verify   # typecheck, tests, the placeholder and readability checks. What CI runs.
 ```
 
 ## Branching
@@ -62,6 +62,8 @@ Two rules follow from that, and both have cost real projects real time:
   decisions are not in it.
 - `reference/*.yml` are the two reference workflows, full of placeholders.
 - `tools/check-placeholders.mjs` keeps those workflows and the README in step.
+- `tools/readability.mjs` measures the article's prose and refuses when it drifts.
+  Run it on any file: `node tools/readability.mjs <file> --report-only`.
 
 If you add a placeholder to a workflow, document it in the README table. CI will
 tell you if you forget, and it will tell you if you document one that nothing
