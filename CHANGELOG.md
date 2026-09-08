@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-08
+
 ### Added
 
 - `tools/readability.mjs`, a benchmark for the article: Flesch reading ease,
@@ -53,5 +55,6 @@ and never tagged, so the rename below ships inside it.
   files earlier, rename `<REHEARSAL_DIR>`, `<REHEARSAL_ENVIRONMENT>` and
   `<REHEARSAL_DB_URL_SECRET>` in your own workflow, and nothing else.
 
-[Unreleased]: https://github.com/damson/migration-rehearsal/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/damson/migration-rehearsal/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/damson/migration-rehearsal/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/damson/migration-rehearsal/releases/tag/v0.1.0
