@@ -163,6 +163,7 @@ that absence is what makes guard 3 necessary.
 | `reference/run-rehearsal.ts` | The plumbing: environment, filesystem, the Postgres client, the printing. |
 | `reference/rehearsal.test.ts` | 30 tests over `rehearsal.ts`, using a scripted fake driver. |
 | `tools/check-placeholders.mjs` | Keeps the workflows and this README from drifting apart. Runs in CI. |
+| `tools/readability.mjs` | Measures the article and names its hardest sentences. Runs in CI. |
 | `.github/workflows/selftest.yml` | The self-test with its placeholders substituted, running here on every push. This repository adopting its own pattern. |
 | `examples/migrations/` | Two ordinary migrations, so the self-test has a real schema and a real ledger to rehearse. |
 
@@ -207,7 +208,7 @@ Node 20 or newer.
 git clone https://github.com/damson/migration-rehearsal.git
 cd migration-rehearsal
 npm install
-npm run verify   # typecheck, the test suite, and the placeholder check
+npm run verify   # typecheck, the test suite, the placeholder and readability checks
 ```
 
 To point the rehearsal at a database by hand:
