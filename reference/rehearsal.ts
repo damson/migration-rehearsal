@@ -442,7 +442,7 @@ export function failureFinding(file: string, err: SqlError): Finding {
  * The transaction.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-export interface ProbeFile {
+export interface RehearsalFile {
   file: string;
   version: string;
 }
@@ -456,11 +456,11 @@ export interface ProbeFile {
  * against a live database produces failures that have nothing to do with the
  * change under review.
  */
-export function unappliedFiles(files: readonly string[], ledger: readonly string[]): ProbeFile[] {
+export function unappliedFiles(files: readonly string[], ledger: readonly string[]): RehearsalFile[] {
   const applied = new Set(ledger);
   return files
     .map((file) => ({ file, version: versionOf(file) }))
-    .filter((f): f is ProbeFile => f.version !== null && !applied.has(f.version))
+    .filter((f): f is RehearsalFile => f.version !== null && !applied.has(f.version))
     .sort((a, b) => a.version.localeCompare(b.version));
 }
 
@@ -471,7 +471,7 @@ export function unappliedFiles(files: readonly string[], ledger: readonly string
  * migration, and it must not read as "the rehearsal passed": `worst([])` is `ok`,
  * so an empty finding list would report a green gate that never ran.
  */
-export function nothingToProbe(applied: number): Finding {
+export function nothingToRehearse(applied: number): Finding {
   return ok(
     'rehearsal',
     `no migration in this branch is missing from the target's ledger (${applied} already applied). ` +
@@ -617,7 +617,7 @@ export async function rehearsal(
   if (pending.length === 0) {
     // Returning before `begin`, deliberately: a transaction opened to do
     // nothing still takes a connection and can still be left open by a crash.
-    findings.push(nothingToProbe(ledger.length));
+    findings.push(nothingToRehearse(ledger.length));
     return findings;
   }
 

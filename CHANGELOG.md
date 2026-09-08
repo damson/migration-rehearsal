@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- The last two identifiers carrying the old word are renamed:
+  `reference/rehearsal.ts` exports `RehearsalFile` where it exported
+  `ProbeFile`, and `nothingToRehearse` where it exported `nothingToProbe`. The
+  0.1.0 rename reached the files, the placeholders, the script and the workflow
+  job, and left these two behind; `nothingToProbe` was already documented as
+  "nothing to rehearse", so only the name lagged. Anyone who copied
+  `rehearsal.ts` before this renames them in their own copy, or takes the file
+  again. Nothing else references them, the 30 tests included.
+- The repository description said "Probing a pull request's migrations". It says
+  rehearsing. That line is repository metadata rather than a file, so it never
+  went through a pull request and the rename missed it.
+
 ## [0.1.0] - 2026-09-08
 
 First public release. The version was drafted before the repository was public
