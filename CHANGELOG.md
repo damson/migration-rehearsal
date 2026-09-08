@@ -6,28 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
+## [0.1.0] - 2026-09-08
 
-- The repository is `migration-rehearsal`. It was `migration-probe-pattern`, a
-  working name. Nothing has been released under either, and GitHub redirects the
-  old URL.
-- The mechanism is a **rehearsal** throughout, where it used to be a probe. The
-  reference files are `rehearsal.ts`, `run-rehearsal.ts`,
-  `rehearse-migrations.yml` and `rehearsal-selftest.yml`; the article is
-  `docs/rehearsing-migrations-against-real-rows.md`; the script is
-  `npm run rehearse`; and the workflow placeholders are `<REHEARSAL_DIR>`,
-  `<REHEARSAL_ENVIRONMENT>` and `<REHEARSAL_DB_URL_SECRET>`. Anyone who had
-  already copied the reference files renames those three placeholders in their
-  own workflow, and nothing else.
-- The self-test's job is `rehearsal guards and rollback, on throwaway Postgres`,
-  the last name still carrying the old word. It went last and on its own,
-  because it is a required status check on `develop`: the rename and the branch
-  protection have to move together, or every open pull request waits on a check
-  name that no longer reports.
-
-## [0.1.0]
-
-First version. Not yet public.
+First public release. The version was drafted before the repository was public
+and never tagged, so everything below ships under it, the rename included.
 
 ### Added
 
@@ -50,6 +32,25 @@ First version. Not yet public.
   self-test with its placeholders substituted, running against a Postgres 17
   service container on every push and pull request. Every guard has been watched
   refusing, for the stated reason, against a real database.
+
+### Changed
+
+- The repository is `migration-rehearsal`. It was `migration-probe-pattern`, a
+  working name. Nothing has been released under either, and GitHub redirects the
+  old URL.
+- The mechanism is a **rehearsal** throughout, where it used to be a probe. The
+  reference files are `rehearsal.ts`, `run-rehearsal.ts`,
+  `rehearse-migrations.yml` and `rehearsal-selftest.yml`; the article is
+  `docs/rehearsing-migrations-against-real-rows.md`; the script is
+  `npm run rehearse`; and the workflow placeholders are `<REHEARSAL_DIR>`,
+  `<REHEARSAL_ENVIRONMENT>` and `<REHEARSAL_DB_URL_SECRET>`. Anyone who had
+  already copied the reference files renames those three placeholders in their
+  own workflow, and nothing else.
+- The self-test's job is `rehearsal guards and rollback, on throwaway Postgres`,
+  the last name still carrying the old word. It went last and on its own,
+  because it is a required status check on `develop`: the rename and the branch
+  protection have to move together, or every open pull request waits on a check
+  name that no longer reports.
 
 [Unreleased]: https://github.com/damson/migration-rehearsal/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/damson/migration-rehearsal/releases/tag/v0.1.0
