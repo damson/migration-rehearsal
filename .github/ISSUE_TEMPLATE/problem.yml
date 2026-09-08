@@ -11,7 +11,7 @@ body:
 
         If the problem is that a guard can be escaped, please report it
         privately instead:
-        https://github.com/damson/migration-probe-pattern/security/policy
+        https://github.com/damson/migration-rehearsal/security/policy
 
   - type: dropdown
     id: area

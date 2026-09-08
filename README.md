@@ -1,6 +1,8 @@
-# migration-probe-pattern
+![migration-rehearsal: a trace showing a migration applied against real rows and rolled back to the line it left, above the measured table. Adding a nullable column passes on both. NOT NULL with no default, a unique index over duplicates, and a CHECK existing rows violate all pass on an empty container and fail on real rows with 23502, 23505 and 23514. Three of four fail only where there is data. Your CI has none.](.github/social-preview/preview.png)
 
-[![CI](https://github.com/damson/migration-probe-pattern/actions/workflows/ci.yml/badge.svg)](https://github.com/damson/migration-probe-pattern/actions/workflows/ci.yml)
+# migration-rehearsal
+
+[![CI](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml/badge.svg)](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml)
 [![licence MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 [![node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](#running-it-yourself)
 [![Postgres](https://img.shields.io/badge/postgres-any%20version-blue)](#faq)
@@ -16,7 +18,14 @@ pull request when real rows cannot accommodate the change.
 Nothing is written. That is the whole trick, and most of the work here goes into
 proving it.
 
-**[Read the article](docs/probing-migrations-against-real-rows.md)** for the full
+The name is the idea: a rehearsal, on the real stage, with nothing kept
+afterwards. One word, used the same way in the article, in the workflows and in
+the code.
+
+If you go looking at the codebase this was extracted from, it calls the same
+mechanism a *probe* and names its files for that. Same technique, earlier word.
+
+**[Read the article](docs/rehearsing-migrations-against-real-rows.md)** for the full
 reasoning. It is self-contained, and it opens with a plain-language primer if any
 of this is new.
 
@@ -82,9 +91,9 @@ is much worse than the gap.
 
 ```sql
 begin;
-savepoint probe_root;
+savepoint rehearsal_root;
   -- every migration this branch has that the target has not applied yet
-rollback to savepoint probe_root;
+rollback to savepoint rehearsal_root;
 rollback;
 ```
 
@@ -103,21 +112,24 @@ of a silent write.
 
 1. **Pick a target.** A staging or preview database with realistic rows. Never
    production, and the tooling refuses production by design.
-2. **Copy `reference/probe.ts` and `reference/run-probe.ts`** into your
-   repository, somewhere like `tools/migration-probe/`.
-3. **Copy `reference/probe-migrations.yml`** into `.github/workflows/` and
+2. **Copy `reference/rehearsal.ts` and `reference/run-rehearsal.ts`** into your
+   repository, somewhere like `tools/migration-rehearsal/`.
+3. **Copy `reference/rehearse-migrations.yml`** into `.github/workflows/` and
    replace the placeholders. The table in [Adapting it](#adapting-it) says what
    each one is.
 4. **Add the credential** as a secret on a GitHub deployment environment, and
    name that environment in the workflow. The article explains why an environment
    rather than a repository secret.
-5. **Copy `reference/probe-selftest.yml` too, and watch it pass.** This is the
+5. **Copy `reference/rehearsal-selftest.yml` too, and watch it pass.** This is the
    step people skip, and it is the one that turns "I believe this rolls back"
-   into "I have watched it roll back". Only then make the probe a required check.
+   into "I have watched it roll back". Only then make the rehearsal a required check.
+   `.github/workflows/selftest.yml` here is exactly that file with the
+   placeholders filled in, if you would rather copy a worked example than fill in
+   a template.
 
 ## Is this safe?
 
-It is the first question, and it deserves a straight answer: **the probe applies
+It is the first question, and it deserves a straight answer: **the rehearsal applies
 your pull request's SQL to a live database.** Everything in the design exists to
 make that safe, and none of it is decorative.
 
@@ -127,7 +139,7 @@ Four guards, in the order they apply:
    connection.** Production is never a valid target. An unrecognised connection
    string is a refusal, not a pass.
 2. **It refuses any migration containing `commit` or `rollback`, before opening a
-   connection.** Those would end the probe's transaction and let writes survive.
+   connection.** Those would end the rehearsal's transaction and let writes survive.
 3. **It proves the rollback with a savepoint.** A `COMMIT` destroys the
    savepoint, so an escape that guard 2 could not see becomes an explicit alarm.
 4. **It counts the database's objects before and after and compares them.** The
@@ -144,35 +156,37 @@ that absence is what makes guard 3 necessary.
 
 | File | What it is |
 |---|---|
-| `docs/probing-migrations-against-real-rows.md` | The article. Self-contained, with a primer for anyone new to migrations in CI. |
-| `reference/probe-migrations.yml` | The pull request gate. Every project-specific value is a placeholder. |
-| `reference/probe-selftest.yml` | The proof that the gate can fail, against a throwaway Postgres. Must-pass and must-fail halves. |
-| `reference/probe.ts` | Every decision the probe makes, plus its transaction as a sequence of statements. |
-| `reference/run-probe.ts` | The plumbing: environment, filesystem, the Postgres client, the printing. |
-| `reference/probe.test.ts` | 30 tests over `probe.ts`, using a scripted fake driver. |
+| `docs/rehearsing-migrations-against-real-rows.md` | The article. Self-contained, with a primer for anyone new to migrations in CI. |
+| `reference/rehearse-migrations.yml` | The pull request gate. Every project-specific value is a placeholder. |
+| `reference/rehearsal-selftest.yml` | The proof that the gate can fail, against a throwaway Postgres. Must-pass and must-fail halves. |
+| `reference/rehearsal.ts` | Every decision the rehearsal makes, plus its transaction as a sequence of statements. |
+| `reference/run-rehearsal.ts` | The plumbing: environment, filesystem, the Postgres client, the printing. |
+| `reference/rehearsal.test.ts` | 30 tests over `rehearsal.ts`, using a scripted fake driver. |
 | `tools/check-placeholders.mjs` | Keeps the workflows and this README from drifting apart. Runs in CI. |
+| `.github/workflows/selftest.yml` | The self-test with its placeholders substituted, running here on every push. This repository adopting its own pattern. |
+| `examples/migrations/` | Two ordinary migrations, so the self-test has a real schema and a real ledger to rehearse. |
 
-`probe.ts` and `run-probe.ts` are separate files because a module that calls
+`rehearsal.ts` and `run-rehearsal.ts` are separate files because a module that calls
 `main()` at import time cannot be imported by a test without running the whole
 job. That split is what makes the guards testable at all.
 
 ## Adapting it
 
 Every project-specific value in the workflows is written in angle brackets, so a
-half-adapted copy fails loudly instead of quietly probing the wrong database.
+half-adapted copy fails loudly instead of quietly rehearsing the wrong database.
 
 | Placeholder | What to put there |
 |---|---|
 | `<MIGRATIONS_DIR>` | Where your migration files live, for example `supabase/migrations`. |
-| `<PROBE_DIR>` | Where `probe.ts` and `run-probe.ts` land in your repository. |
-| `<PROBE_ENVIRONMENT>` | The GitHub deployment environment holding the credential. |
-| `<PROBE_DB_URL_SECRET>` | Name of the environment secret holding the target connection string. |
-| `<EXPECTED_PROJECT_REF>` | Name of the variable identifying the one database the probe may touch. |
+| `<REHEARSAL_DIR>` | Where `rehearsal.ts` and `run-rehearsal.ts` land in your repository. |
+| `<REHEARSAL_ENVIRONMENT>` | The GitHub deployment environment holding the credential. |
+| `<REHEARSAL_DB_URL_SECRET>` | Name of the environment secret holding the target connection string. |
+| `<EXPECTED_PROJECT_REF>` | Name of the variable identifying the one database the rehearsal may touch. |
 | `<NODE_VERSION>` | Node version for the runner, for example `20`. |
 | `<SECRETS_DOC>` | Where your setup checklist lives. It is quoted in the message someone sees when the credential is missing. |
 | `<PRELUDE_SQL>` | Self-test only. SQL creating whatever roles and schemas a managed provider supplies for you. Delete the step if your migrations only touch `public`. |
 
-Three things in `probe.ts` are tied to a migration tool rather than to a project,
+Three things in `rehearsal.ts` are tied to a migration tool rather than to a project,
 and they are marked as such at the top of the file:
 
 - **`LEDGER_QUERY`**, which reads the versions already applied. The reference
@@ -190,19 +204,19 @@ and they are marked as such at the top of the file:
 Node 20 or newer.
 
 ```sh
-git clone https://github.com/damson/migration-probe-pattern.git
-cd migration-probe-pattern
+git clone https://github.com/damson/migration-rehearsal.git
+cd migration-rehearsal
 npm install
 npm run verify   # typecheck, the test suite, and the placeholder check
 ```
 
-To point the probe at a database by hand:
+To point the rehearsal at a database by hand:
 
 ```sh
-PROBE_TARGET_DB_URL=... \
-PROBE_EXPECTED_PROJECT_REF=... \
-PROBE_MIGRATIONS_DIR=path/to/migrations \
-  npm run probe
+REHEARSAL_TARGET_DB_URL=... \
+REHEARSAL_EXPECTED_PROJECT_REF=... \
+REHEARSAL_MIGRATIONS_DIR=path/to/migrations \
+  npm run rehearse
 ```
 
 It writes nothing. That claim is exactly what guards 3 and 4 exist to prove, and
@@ -227,7 +241,7 @@ value comes entirely from the rows. A staging database restored from a
 production sample is the usual answer.
 
 **What about pull requests from forks?**
-GitHub withholds secrets from fork pull requests, so the probe cannot run there.
+GitHub withholds secrets from fork pull requests, so the rehearsal cannot run there.
 The workflow says so loudly rather than passing quietly. The article explains why
 using `pull_request_target` to close that gap would be much worse than the gap.
 
@@ -238,14 +252,14 @@ required status check on its own: the article and your repository settings both
 have opinions about that.
 
 **What if a statement cannot run inside a transaction?**
-`CREATE INDEX CONCURRENTLY` is the usual one. It cannot be probed by a
+`CREATE INDEX CONCURRENTLY` is the usual one. It cannot be rehearsed by a
 transaction, so it is reported as a warning that says exactly that, rather than
 failing the pull request. A gate that blocks on its own limitations becomes a
 gate people route around.
 
 **Does it work with a migration tool that wraps each file in its own
 transaction?**
-Yes. That is the common case, and the probe deliberately behaves the same way,
+Yes. That is the common case, and the rehearsal deliberately behaves the same way,
 including stopping at the first failure.
 
 ## Status, honestly
@@ -256,18 +270,33 @@ between a check that ran and a check that looked green.
 - **The measured table** at the top comes from applying those four migrations to
   both an empty container and a live target, in the project this was extracted
   from.
-- **`probe.ts`** is covered by `probe.test.ts`, which runs in CI: 30 tests over
+- **`rehearsal.ts`** is covered by `rehearsal.test.ts`, which runs in CI: 30 tests over
   the guards, the failure classification and the transaction sequence, against a
   scripted fake driver.
-- **`run-probe.ts` and both workflows have not been executed in this
-  repository.** They are transcriptions of code that runs elsewhere,
-  parameterised. Nothing here has ever connected to a database.
+- **The whole thing runs against a real database in this repository's own CI.**
+  `.github/workflows/selftest.yml` is `reference/rehearsal-selftest.yml` with the
+  placeholders substituted, pointed at `examples/migrations` and a Postgres 17
+  service container. It runs on every push and every pull request.
+
+That last one is what makes the rest worth reading. On the most recent run, in
+order:
+
+| Case | What Postgres actually said |
+|---|---|
+| Ledger current | nothing applied, nothing checked, exit 0 |
+| Clean pending migration | applied, rolled back, `public` unchanged at 5 objects, and `rehearsal_ok` verified absent from `pg_class` afterwards |
+| `NOT NULL` over rows | `column "rehearsal_nn" of relation "rehearsal_target" contains null values [23502]`, classified DATA-SHAPE |
+| Migration containing `commit` | refused before anything was dialled |
+| Migration containing bare `end;` | savepoint destroyed, `25P01`, and `rehearsal_escape` verified still present, so the alarm was a real one |
+| Override against a non-loopback host | refused, naming the host |
+| Loopback target, no override | refused, so the default is fail-closed |
 
 A fake driver can tell you that `rollback` is issued when a migration throws. It
 cannot tell you that a column name is real or that a constraint would reject a
-row. The self-test workflow is what answers that, and running it is the first
-thing to do after substituting the placeholders. There is an open issue tracking
-exactly that.
+row. The two rows above that come from `pg_class` rather than from the rehearsal's
+own report are the ones carrying the argument: the first says the rehearsal does not
+write to its target, and the second stops an alarm that fires on every run from
+passing as a working guard.
 
 ## Contributing
 

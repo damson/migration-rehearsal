@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const WORKFLOWS = ['reference/probe-migrations.yml', 'reference/probe-selftest.yml'];
+const WORKFLOWS = ['reference/rehearse-migrations.yml', 'reference/rehearsal-selftest.yml'];
 const README = 'README.md';
 
 const PLACEHOLDER = /<([A-Z][A-Z0-9_]*)>/g;

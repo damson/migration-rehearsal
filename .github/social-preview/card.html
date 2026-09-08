@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rehearsal: trace and measurement</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Azeret+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+/* THESIS: the instrument world of the first card, carrying the measurement that
+   is the article's actual argument. The trace shows what the rehearsal does;
+   the table shows why it is worth doing.
+   OWN-WORLD: prussian ground, lead-pale measurement grid, one vermilion that
+   belongs to the trace and to the failing codes alike. */
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:1280px; height:640px; }
+:root {
+  --ground:#0d2733; --ground-deep:#081c26;
+  --grid:rgba(214,232,240,.07); --grid-major:rgba(214,232,240,.13);
+  --trace:#e6512c; --ink:#f2f6f8; --ink-soft:#8fb2c2;
+  --rule:rgba(242,246,248,.12); --pass:#63808f;
+}
+body {
+  font-family:'Archivo', system-ui, sans-serif; color:var(--ink);
+  overflow:hidden; -webkit-font-smoothing:antialiased;
+}
+.card {
+  position:relative; width:1280px; height:640px; overflow:hidden;
+  background:radial-gradient(120% 90% at 50% -20%, #14384a 0%, var(--ground) 45%, var(--ground-deep) 100%);
+  padding:40px 84px 0;
+}
+.grid {
+  position:absolute; inset:0;
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px),
+    linear-gradient(to right, var(--grid-major) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-major) 1px, transparent 1px);
+  background-size:40px 40px, 40px 40px, 200px 200px, 200px 200px;
+}
+
+/* the signature of the first card, kept: applied against real rows, then
+   returned exactly to the line it left */
+.trace { position:relative; display:block; width:1112px; height:104px; margin-bottom:26px; }
+
+table { position:relative; width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:13px 0; }
+thead th {
+  font-size:17px; font-weight:800; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-soft); padding-bottom:9px;
+}
+thead th.num { text-align:center; }
+tbody td { font-size:25px; font-weight:700; letter-spacing:-.012em; border-top:1px solid var(--rule); }
+tbody td.num { text-align:center; font-family:'Azeret Mono', monospace; font-size:24px; font-weight:600; }
+.pass { color:var(--pass); }
+.fail { color:var(--trace); }
+col.c1 { width:48%; } col.c2 { width:26%; } col.c3 { width:26%; }
+
+.plate { position:absolute; left:84px; bottom:44px; right:84px; }
+h1 { font-size:62px; font-weight:800; letter-spacing:-.035em; line-height:1; }
+p { margin-top:12px; font-size:26px; font-weight:500; letter-spacing:-.012em; color:var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="grid"></div>
+
+  <svg class="trace" viewBox="0 0 1112 104" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <line x1="0" y1="80" x2="1112" y2="80" stroke="rgba(242,246,248,.28)" stroke-width="2"/>
+    <line x1="330" y1="6" x2="330" y2="100" stroke="rgba(242,246,248,.28)" stroke-width="2" stroke-dasharray="5 9"/>
+    <line x1="742" y1="6" x2="742" y2="100" stroke="rgba(242,246,248,.28)" stroke-width="2" stroke-dasharray="5 9"/>
+    <path d="M 0 80 H 330 V 58 H 410 V 40 H 490 V 24 H 590 V 16 H 742 V 80 H 1112"
+          stroke="var(--trace)" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="742" cy="80" r="9" fill="var(--trace)"/>
+  </svg>
+
+  <table>
+    <colgroup><col class="c1"><col class="c2"><col class="c3"></colgroup>
+    <thead>
+      <tr><th>Migration</th><th class="num">Empty container</th><th class="num">Real rows</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Add a nullable column</td><td class="num pass">pass</td><td class="num pass">pass</td></tr>
+      <tr><td>Add NOT NULL, no default</td><td class="num pass">pass</td><td class="num fail">23502</td></tr>
+      <tr><td>Unique index over duplicates</td><td class="num pass">pass</td><td class="num fail">23505</td></tr>
+      <tr><td>CHECK existing rows violate</td><td class="num pass">pass</td><td class="num fail">23514</td></tr>
+    </tbody>
+  </table>
+
+  <div class="plate">
+    <h1>migration&#8209;rehearsal</h1>
+    <p>Three of four fail only where there is data. Your CI has none.</p>
+  </div>
+</div>
+</body>
+</html>

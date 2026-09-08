@@ -39,7 +39,7 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Test the probe's decisions against a scripted fake driver
+      - name: Test the rehearsal's decisions against a scripted fake driver
         run: npm run test
 
       # The reference workflows are full of placeholders, so nothing else here

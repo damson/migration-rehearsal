@@ -11,7 +11,7 @@ import {
   loopbackOverride,
   migrationRefusals,
   preDialFindings,
-  probe,
+  rehearsal,
   projectRefFrom,
   transactionControl,
   targetFindings,
@@ -19,11 +19,11 @@ import {
   worst,
   type Finding,
   type Queryable,
-} from './probe.js';
+} from './rehearsal.js';
 
 const REF = 'abcdefghijklmnopqrst';
 const TARGET = `postgresql://postgres.${REF}:pw@aws-0-eu-west-2.pooler.example.com:5432/postgres`;
-const LOCAL = 'postgresql://postgres:pw@localhost:5432/probe';
+const LOCAL = 'postgresql://postgres:pw@localhost:5432/rehearsal';
 
 function sqlError(code: string, message = 'boom'): Error {
   return Object.assign(new Error(message), { code });
@@ -167,7 +167,7 @@ describe('guard 2: transaction control in the SQL', () => {
     expect(transactionControl('select rollback_at from t;')).toEqual([]);
   });
 
-  it('refuses to report a probe that read no files at all', () => {
+  it('refuses to report a rehearsal that read no files at all', () => {
     // An empty directory makes every per-file loop vacuous, so without this the
     // run reports a clean bill of health for having checked nothing.
     expect(worst(migrationRefusals([], () => '', 'migrations'))).toBe('fail');
@@ -189,8 +189,8 @@ describe('telling the failure classes apart', () => {
   });
 
   it('blocks on a data-shape failure and only warns on its own limits', () => {
-    // A probe-limit failure is information. Blocking a pull request because the
-    // probe cannot express the statement would make the gate the thing to route
+    // A rehearsal-limit failure is information. Blocking a pull request because the
+    // rehearsal cannot express the statement would make the gate the thing to route
     // around, which is how a required check stops being read.
     expect(failureFinding('1_a.sql', sqlError('23502')).level).toBe('fail');
     expect(failureFinding('1_a.sql', sqlError('25001')).level).toBe('warn');
@@ -218,9 +218,9 @@ describe('which files are pending', () => {
 describe('the transaction', () => {
   const read = () => 'create table t (id int);';
 
-  it('never opens one when there is nothing to probe', async () => {
+  it('never opens one when there is nothing to rehearse', async () => {
     const { client, queries } = world();
-    const findings = await probe(client, ['1_a.sql'], read);
+    const findings = await rehearsal(client, ['1_a.sql'], read);
 
     expect(queries).not.toContain('begin');
     // And it says so, rather than reporting a green gate that never ran.
@@ -229,7 +229,7 @@ describe('the transaction', () => {
 
   it('applies what is pending, then rolls it back', async () => {
     const { client, queries } = world();
-    const findings = await probe(client, ['1_a.sql', '2_b.sql'], read);
+    const findings = await rehearsal(client, ['1_a.sql', '2_b.sql'], read);
 
     expect(queries).toContain('begin');
     expect(queries).toContain(`savepoint ${SAVEPOINT}`);
@@ -241,7 +241,7 @@ describe('the transaction', () => {
 
   it('stops at the first failure and still rolls back', async () => {
     const { client, queries } = world((sql) => (sql.startsWith('create table fail') ? sqlError('23502') : undefined));
-    const findings = await probe(
+    const findings = await rehearsal(
       client,
       ['2_b.sql', '3_c.sql'],
       (f) => (f === '2_b.sql' ? 'create table fail (id int);' : 'create table later (id int);'),
@@ -259,7 +259,7 @@ describe('the transaction', () => {
     const { client } = world((sql) =>
       sql === `rollback to savepoint ${SAVEPOINT}` ? sqlError('3B001', 'no such savepoint') : undefined,
     );
-    const findings = await probe(client, ['2_b.sql'], read);
+    const findings = await rehearsal(client, ['2_b.sql'], read);
 
     expect(messages(findings)).toMatch(/SAVEPOINT WAS DESTROYED/);
     expect(messages(findings)).not.toMatch(/nothing was written/);
@@ -270,11 +270,11 @@ describe('the transaction', () => {
     const { client, queries } = world((sql) =>
       sql === `savepoint ${SAVEPOINT}` ? sqlError('42601') : undefined,
     );
-    // The throw is not swallowed here: the runner turns it into a `probe`
+    // The throw is not swallowed here: the runner turns it into a `rehearsal`
     // finding so the report still prints. What must not depend on the caller is
     // the rollback, which is in a `finally` precisely so that nothing above can
     // leave the transaction open holding locks on a live database.
-    await expect(probe(client, ['2_b.sql'], read)).rejects.toThrow('boom');
+    await expect(rehearsal(client, ['2_b.sql'], read)).rejects.toThrow('boom');
 
     expect(queries).toContain('rollback');
   });
@@ -282,7 +282,7 @@ describe('the transaction', () => {
   it('measures the rollback rather than trusting it', async () => {
     let calls = 0;
     const { client } = world((sql) => (sql === SHAPE_QUERY ? [{ n: calls++ === 0 ? 10 : 11 }] : undefined));
-    const findings = await probe(client, ['2_b.sql'], read);
+    const findings = await rehearsal(client, ['2_b.sql'], read);
 
     // Guard 4 is independent of guard 3: it still speaks if `rollback to
     // savepoint` ever warns instead of raising.
@@ -292,7 +292,7 @@ describe('the transaction', () => {
 
   it('reads the ledger before anything else, and explains an absent one', async () => {
     const { client, queries } = world((sql) => (sql === LEDGER_QUERY ? sqlError('3F000') : undefined));
-    const findings = await probe(client, ['2_b.sql'], read);
+    const findings = await rehearsal(client, ['2_b.sql'], read);
 
     expect(queries).not.toContain('begin');
     expect(messages(findings)).toMatch(/never been migrated/);
@@ -300,7 +300,7 @@ describe('the transaction', () => {
 
   it('says out loud when the target is ahead of the branch', async () => {
     const { client } = world((sql) => (sql === LEDGER_QUERY ? [{ version: '1' }, { version: '9' }] : undefined));
-    const findings = await probe(client, ['1_a.sql', '2_b.sql'], read);
+    const findings = await rehearsal(client, ['1_a.sql', '2_b.sql'], read);
 
     expect(messages(findings)).toMatch(/1 version\(s\) this branch does not: 9/);
     // Ordinary, so it must not block the pull request.
@@ -309,7 +309,7 @@ describe('the transaction', () => {
 
   it('sets both timeouts before it touches anything', async () => {
     const { client, queries } = world();
-    await probe(client, ['1_a.sql'], read);
+    await rehearsal(client, ['1_a.sql'], read);
 
     expect(queries.slice(0, 2)).toEqual(['set statement_timeout = 60000', 'set lock_timeout = 5000']);
   });

@@ -1,7 +1,7 @@
 // Apply this branch's unapplied migrations to a live database inside a
 // transaction, then roll it back and prove nothing stayed.
 //
-//   PROBE_TARGET_DB_URL=... PROBE_EXPECTED_PROJECT_REF=... npx tsx reference/run-probe.ts
+//   REHEARSAL_TARGET_DB_URL=... REHEARSAL_EXPECTED_PROJECT_REF=... npx tsx reference/run-rehearsal.ts
 //
 // Why this exists. A throwaway-Postgres job applies every migration to an EMPTY
 // database, so it cannot see any failure that needs rows. Three of the four
@@ -12,7 +12,7 @@
 // WHAT MAKES IT SAFE, in the order the run applies it:
 //
 //   1. It refuses a target that is not the expected project, before dialling.
-//      Production is never a probe target, and the refusal is the only guard
+//      Production is never a rehearsal target, and the refusal is the only guard
 //      there is: once a log line names the database reached, it has been.
 //   2. It refuses any migration carrying transaction control, before dialling.
 //   3. It opens a savepoint and rolls back TO it, so a COMMIT that slipped past
@@ -23,7 +23,7 @@
 // It never prints a connection string, a password or a key: only the project
 // reference and the host.
 //
-// Every decision lives in probe.ts and is unit-tested. This file is the IO,
+// Every decision lives in rehearsal.ts and is unit-tested. This file is the IO,
 // because a module that calls `main()` at import time cannot be imported by a
 // test without running the job.
 
@@ -41,12 +41,12 @@ import {
   normaliseError,
   ok,
   preDialFindings,
-  probe,
+  rehearsal,
   render,
   targetFindings,
-} from './probe.js';
+} from './rehearsal.js';
 
-const MIGRATIONS_DIR = process.env.PROBE_MIGRATIONS_DIR ?? 'supabase/migrations';
+const MIGRATIONS_DIR = process.env.REHEARSAL_MIGRATIONS_DIR ?? 'supabase/migrations';
 const DIR = path.resolve(process.cwd(), MIGRATIONS_DIR);
 
 function migrationFiles(): string[] {
@@ -74,8 +74,8 @@ function sslFor(url: string): pg.ClientConfig['ssl'] {
 }
 
 async function main(): Promise<number> {
-  const url = process.env.PROBE_TARGET_DB_URL;
-  const expectedRef = process.env.PROBE_EXPECTED_PROJECT_REF;
+  const url = process.env.REHEARSAL_TARGET_DB_URL;
+  const expectedRef = process.env.REHEARSAL_EXPECTED_PROJECT_REF;
   // Resolved against an empty string when the URL is missing, which cannot be
   // allowed, so the refusal below still fires first.
   const override = loopbackOverride(process.argv.slice(2), url ?? '');
@@ -96,7 +96,7 @@ async function main(): Promise<number> {
     dir: MIGRATIONS_DIR,
   });
   if (exitCode(refusals) !== 0) {
-    console.log(render([...refusals, ok('probe', 'not run: the target or the migrations were refused above.')]));
+    console.log(render([...refusals, ok('rehearsal', 'not run: the target or the migrations were refused above.')]));
     return exitCode(refusals);
   }
 
@@ -109,9 +109,9 @@ async function main(): Promise<number> {
     return 1;
   }
   try {
-    findings = [...refusals, ...(await probe(client, files, readMigration))];
+    findings = [...refusals, ...(await rehearsal(client, files, readMigration))];
   } catch (e) {
-    findings = [...refusals, fail('probe', normaliseError(e).message ?? 'the probe threw')];
+    findings = [...refusals, fail('rehearsal', normaliseError(e).message ?? 'the rehearsal threw')];
   } finally {
     await client.end().catch(() => {});
   }
