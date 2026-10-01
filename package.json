@@ -39,11 +39,11 @@
     "pg": "^8.13.0"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.6.3",
     "@types/pg": "^8.11.10",
-    "tsx": "^4.19.0",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.11",
-    "yaml": "^2.5.1"
+    "vitest": "^5.0.2",
+    "yaml": "^2.9.1"
   }
 }
