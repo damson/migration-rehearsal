@@ -18,7 +18,8 @@ attached, so the most valuable contributions are often not code at all.
 
 ## Getting set up
 
-Node 20 or newer, and nothing else. No database is needed for the test suite.
+Node 22.12 or newer, and nothing else. No database is needed for the test suite.
+Versions 23 and 25 are out, because the test runner does not support them.
 
 ```sh
 git clone https://github.com/damson/migration-rehearsal.git

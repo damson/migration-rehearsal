@@ -6,7 +6,7 @@ name: Rehearsal self-test
 #
 #   <MIGRATIONS_DIR> -> examples/migrations
 #   <REHEARSAL_DIR>      -> reference
-#   <NODE_VERSION>   -> 20
+#   <NODE_VERSION>   -> 22
 #   <PRELUDE_SQL>    -> deleted, per the reference file's own instruction, because
 #                       the example migrations only touch `public`
 #
@@ -70,7 +70,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
 
       - run: npm ci --no-audit --no-fund

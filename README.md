@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml/badge.svg)](https://github.com/damson/migration-rehearsal/actions/workflows/ci.yml)
 [![licence MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
-[![node >=20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](#running-it-yourself)
+[![node >=22.12](https://img.shields.io/badge/node-%3E%3D22.12-brightgreen)](#running-it-yourself)
 [![Postgres](https://img.shields.io/badge/postgres-any%20version-blue)](#faq)
 
 **Your CI checks migrations against an empty database. Most migrations fail
@@ -183,7 +183,7 @@ half-adapted copy fails loudly instead of quietly rehearsing the wrong database.
 | `<REHEARSAL_ENVIRONMENT>` | The GitHub deployment environment holding the credential. |
 | `<REHEARSAL_DB_URL_SECRET>` | Name of the environment secret holding the target connection string. |
 | `<EXPECTED_PROJECT_REF>` | Name of the variable identifying the one database the rehearsal may touch. |
-| `<NODE_VERSION>` | Node version for the runner, for example `20`. |
+| `<NODE_VERSION>` | Node version for the runner, for example `22`. |
 | `<SECRETS_DOC>` | Where your setup checklist lives. It is quoted in the message someone sees when the credential is missing. |
 | `<PRELUDE_SQL>` | Self-test only. SQL creating whatever roles and schemas a managed provider supplies for you. Delete the step if your migrations only touch `public`. |
 
@@ -202,7 +202,8 @@ and they are marked as such at the top of the file:
 
 ## Running it yourself
 
-Node 20 or newer.
+Node 22.12 or newer. Versions 23 and 25 are out: the test runner does not
+support them, and `package.json` says so.
 
 ```sh
 git clone https://github.com/damson/migration-rehearsal.git
