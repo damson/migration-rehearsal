@@ -15,7 +15,7 @@
   "homepage": "https://github.com/damson/migration-rehearsal#readme",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "keywords": [
     "postgres",
