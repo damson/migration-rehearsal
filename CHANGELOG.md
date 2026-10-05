@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A migrations directory in which no filename carries a version is refused,
+  rather than reported as a ledger that is already current. `versionOf` is one
+  of the three things an adopter points at their own migration tool, and one
+  left on the reference's Supabase scheme skipped every Flyway or Liquibase
+  filename in silence. Nothing was left pending, the run said the ledger was
+  current, and the gate went green over a rehearsal that applied nothing.
+  `migrationRefusals` now asserts that at least one filename parsed, which is
+  the assertion it already made about an empty directory, one step later. A
+  single unversioned file beside the migrations is still skipped, and is now
+  named in a warning rather than dropped silently. Both halves are watched in
+  `rehearsal-selftest.yml`.
+
 ## [0.2.0] - 2026-09-08
 
 ### Added
