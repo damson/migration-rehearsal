@@ -305,8 +305,43 @@ export function migrationRefusals(
   if (files.length === 0) {
     return [fail('migrations', `no .sql files in ${dir}: refusing to report a rehearsal that read nothing.`)];
   }
-  return files.flatMap((file) => transactionControlFindings(file, transactionControl(read(file))));
+  const unversioned = files.filter((file) => versionOf(file) === null);
+
+  // The same assertion one step later, and the one that was missing. A file
+  // whose name carries no version is dropped by `unappliedFiles`, so a
+  // directory the version reader cannot parse leaves nothing pending, and the
+  // run reports the ledger current: a green gate over a rehearsal that applied
+  // nothing. A version reader left pointing at another tool's naming scheme
+  // fails in exactly this shape, and it is silent.
+  if (unversioned.length === files.length) {
+    return [
+      fail(
+        'migrations',
+        `not one of the ${files.length} .sql file(s) in ${dir} carries a version this reader can parse: ` +
+          'refusing to report a rehearsal that would have applied nothing. `versionOf` reads the version ' +
+          'off a filename, and it has to match the naming scheme of the migration tool in use.',
+      ),
+    ];
+  }
+
+  const findings = files.flatMap((file) => transactionControlFindings(file, transactionControl(read(file))));
+
+  // A seed or a note sitting beside the migrations is ordinary, so skipping one
+  // is not a failure. Skipping it without saying so is how most of a directory
+  // goes unrehearsed behind a green check.
+  if (unversioned.length > 0) {
+    findings.push(
+      warn(
+        'migrations',
+        `${unversioned.length} of ${files.length} .sql file(s) in ${dir} carry no version and were not ` +
+          `rehearsed: ${unversioned.join(', ')}.`,
+      ),
+    );
+  }
+
+  return findings;
 }
+
 
 /**
  * Everything decided before a connection is opened, and the order matters.
