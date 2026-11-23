@@ -151,6 +151,30 @@ jobs:
           fi
           echo "Applied and rolled back, nothing left. OK"
 
+      - name: Passes, and names what it skipped, when only some filenames carry a version
+        run: |
+          set -euo pipefail
+          trap 'rm -f examples/migrations/2099*.sql examples/migrations/rehearsal-note.sql' EXIT
+          # A seed or a note beside the migrations is ordinary. This half exists
+          # because the guard below would be satisfied just as well by one that
+          # refuses every directory, and that one would be useless.
+          echo 'create table rehearsal_mixed (id int);' > examples/migrations/2099010100000400_rehearsal_mixed.sql
+          echo 'select 1;' > examples/migrations/rehearsal-note.sql
+          set +e
+          npx tsx reference/run-rehearsal.ts --allow-loopback-target > mixed.log 2>&1
+          code=$?
+          set -e
+          cat mixed.log
+          if [ $code -ne 0 ]; then
+            echo '::error::An unversioned file beside the migrations was treated as a failure. The guard over-refuses.'
+            exit 1
+          fi
+          # Both halves of the claim: the skip is named, and the real migration
+          # was still rehearsed rather than skipped along with it.
+          grep -q 'rehearsal-note.sql' mixed.log
+          grep -q '2099010100000400_rehearsal_mixed.sql' mixed.log
+          echo "Skipped file named, migration still rehearsed. OK"
+
       # ---- the must-fail half -------------------------------------------------
 
       - name: Must refuse a migration real rows cannot accommodate
@@ -258,3 +282,34 @@ jobs:
             exit 1
           fi
           echo "Refused without the override. OK"
+
+      # The version reader is one of the three things an adopter has to point at
+      # their own migration tool, and pointing it wrong is silent: every
+      # filename fails to parse, nothing is left pending, and the run reports
+      # that the ledger is current. That is a green gate over a rehearsal which
+      # applied nothing, so the directory that cannot be parsed has to refuse.
+      - name: Must refuse a directory where no filename carries a version
+        run: |
+          set -euo pipefail
+          trap 'rm -rf rehearsal-unversioned' EXIT
+          mkdir -p rehearsal-unversioned
+          echo 'create table rehearsal_v1 (id int);' > rehearsal-unversioned/V1__create.sql
+          echo 'create table rehearsal_v2 (id int);' > rehearsal-unversioned/V2__alter.sql
+          set +e
+          REHEARSAL_MIGRATIONS_DIR=rehearsal-unversioned \
+            npx tsx reference/run-rehearsal.ts --allow-loopback-target > unversioned.log 2>&1
+          code=$?
+          set -e
+          cat unversioned.log
+          if [ $code -eq 0 ]; then
+            echo '::error::A directory whose filenames carry no version passed. The gate did not fire.'
+            exit 1
+          fi
+          grep -q 'carries a version this reader can parse' unversioned.log
+          # Refusing for the wrong reason would not prove this guard. The exact
+          # wrong answer it replaces is the ledger reading as current.
+          if grep -q 'Nothing was applied and nothing was checked' unversioned.log; then
+            echo '::error::Refused, but still reported the ledger as current. That is the answer this guard exists to replace.'
+            exit 1
+          fi
+          echo "Refused a directory no filename in it could be versioned. OK"

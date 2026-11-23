@@ -225,6 +225,12 @@ never ran is the most misleading output a check can produce.
 health.** Every per-file loop is vacuous over an empty list, so without an
 explicit assertion that files were read, a misconfigured path reports success.
 
+**A directory the version reader cannot parse is the same failure, one step
+later.** A filename carrying no version is skipped, so a reader still pointed at
+another tool's naming scheme skips every file in the directory. Nothing is left
+pending, and the run reports the ledger as current. The assertion is the same
+one: if not a single filename there carries a version, refuse.
+
 ## Fork safety: `pull_request`, never `pull_request_target`
 
 This is the security decision that shapes everything else, so it is worth stating
@@ -316,7 +322,9 @@ costs nothing, and every check comes in a pair.
 The must-pass half:
 
 - a current ledger produces a pass that says nothing was checked;
-- a clean pending migration applies, rolls back, and the report says so.
+- a clean pending migration applies, rolls back, and the report says so;
+- an unversioned file sitting beside the migrations is named and skipped, and
+  the versioned one is still rehearsed.
 
 The must-fail half:
 
@@ -326,7 +334,9 @@ The must-fail half:
 - a migration containing a bare `end;` trips the savepoint alarm, which is the
   case the text guard provably cannot catch;
 - the loopback override is refused against a non-loopback host;
-- a loopback target with no override is refused, so the default is fail-closed.
+- a loopback target with no override is refused, so the default is fail-closed;
+- a directory in which no filename carries a version is refused, rather than
+  reported as a ledger that is already current.
 
 Two of these assertions come from the database rather than from the tool, and
 they are the ones that carry the argument:

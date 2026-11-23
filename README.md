@@ -194,7 +194,10 @@ and they are marked as such at the top of the file:
   reads the Supabase CLI's `supabase_migrations.schema_migrations`. Flyway's
   `flyway_schema_history`, Liquibase's `databasechangelog` and Django's
   `django_migrations` all substitute directly.
-- **`versionOf`**, which reads a version out of a filename.
+- **`versionOf`**, which reads a version out of a filename. If no filename in
+  the migrations directory carries a version it can read, the run refuses: a
+  reader pointed at another tool's naming scheme would otherwise skip every
+  file and report the ledger as current.
 - **`projectRefFrom`**, which reads a database identifier out of a connection
   string. The reference reads the two Supabase shapes. The contract that matters
   is the null: an unrecognised connection string must never be treated as a

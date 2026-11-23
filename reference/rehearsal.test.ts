@@ -172,6 +172,24 @@ describe('guard 2: transaction control in the SQL', () => {
     // run reports a clean bill of health for having checked nothing.
     expect(worst(migrationRefusals([], () => '', 'migrations'))).toBe('fail');
   });
+
+  it('refuses when there are files but not one of them carries a version', () => {
+    // The same vacuity one step later. `unappliedFiles` filters an unversioned
+    // file out, so a directory the version reader cannot parse leaves nothing
+    // pending, and the run reports that the ledger is current. That is the
+    // signature of a version reader pointed at the wrong naming scheme, and it
+    // produced a green gate over a rehearsal that applied nothing.
+    expect(worst(migrationRefusals(['V1__a.sql', 'V2__b.sql'], () => '', 'migrations'))).toBe('fail');
+  });
+
+  it('says which files it skipped rather than filtering them in silence', () => {
+    // A directory may legitimately hold a seed or a note beside the migrations,
+    // so skipping one is not a failure. Skipping one without saying so is how
+    // nine migrations out of ten go unrehearsed behind a green check.
+    const findings = migrationRefusals(['notes.sql', '1_a.sql'], () => '', 'migrations');
+    expect(worst(findings)).toBe('warn');
+    expect(findings.some((f) => f.message.includes('notes.sql'))).toBe(true);
+  });
 });
 
 describe('telling the failure classes apart', () => {
