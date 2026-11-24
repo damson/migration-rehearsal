@@ -82,22 +82,50 @@ if (unused.length > 0) {
   );
 }
 
-const USES = /^\s*-?\s*uses:\s*([^@\s]+)@(\S+)/gm;
-const pinsIn = (text) => [...text.matchAll(USES)].map((m) => ({ action: m[1], ref: m[2] }));
-const tested = new Map();
-for (const file of fs.readdirSync(path.join(ROOT, '.github/workflows'))) {
-  for (const { action, ref } of pinsIn(read(path.join('.github/workflows', file)))) tested.set(action, ref);
+// Every `uses:` in a workflow, read from the parsed YAML so the step's layout
+// (block or flow mapping, quoted or not) cannot hide one. Job-level `uses:`
+// (a reusable workflow) counts too.
+function pinsIn(text) {
+  const doc = parse(text);
+  const pins = [];
+  for (const job of Object.values(doc?.jobs ?? {})) {
+    const uses = [job?.uses, ...(job?.steps ?? []).map((step) => step?.uses)];
+    for (const value of uses) {
+      if (typeof value !== 'string') continue;
+      const at = value.lastIndexOf('@');
+      pins.push(at < 0 ? { action: value, ref: '' } : { action: value.slice(0, at), ref: value.slice(at + 1) });
+    }
+  }
+  return pins;
 }
+
+// Every pin this repository's own workflows run, per action. Two different
+// pins for one action is a disagreement to fix, not a choice for whichever
+// file happens to be read last.
+const tested = new Map();
+for (const file of fs.readdirSync(path.join(ROOT, '.github/workflows')).sort()) {
+  for (const { action, ref } of pinsIn(read(path.join('.github/workflows', file)))) {
+    if (!tested.has(action)) tested.set(action, new Set());
+    tested.get(action).add(ref);
+  }
+}
+for (const [action, refs] of tested) {
+  if (refs.size > 1) {
+    problems.push(`.github/workflows pins ${action} to ${[...refs].sort().join(' and ')}. Pick one.`);
+  }
+}
+
 let pinned = 0;
 for (const file of WORKFLOWS) {
   for (const { action, ref } of pinsIn(read(file))) {
     pinned++;
+    const refs = tested.get(action);
     if (!/^[0-9a-f]{40}$/.test(ref)) {
       problems.push(`${file}: ${action}@${ref} is not pinned to a full commit SHA.`);
-    } else if (tested.get(action) !== ref) {
+    } else if (!refs || refs.size !== 1 || !refs.has(ref)) {
       problems.push(
-        `${file}: ${action}@${ref} differs from the ${tested.get(action) ?? 'nothing'} this repository's ` +
-          'own workflows run. Copy the pin across, so what people adopt is what CI tested.',
+        `${file}: ${action}@${ref} differs from what this repository's own workflows run ` +
+          `(${refs ? [...refs].join(', ') : 'nothing'}). Copy the pin across, so what people adopt is what CI tested.`,
       );
     }
   }
