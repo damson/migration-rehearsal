@@ -77,11 +77,11 @@ alarm.
 
 ## Adopt it in five steps
 
-1. **Pick a target**: a staging or preview database with realistic rows. Never
-   production.
+1. **Pick a target**: a staging or preview database with realistic rows, reachable
+   from GitHub-hosted runners. Never production.
 2. **Copy `reference/rehearsal.ts` and `reference/run-rehearsal.ts`** into your
    repository, for example into `tools/migration-rehearsal/`. Your repository
-   needs `pg` and `tsx` as dependencies.
+   needs `pg` and `tsx` as dependencies, and a committed `package-lock.json`.
 3. **Copy `reference/rehearse-migrations.yml`** into `.github/workflows/` and
    replace the values in angle brackets. See [Adapting it](#adapting-it).
 4. **Store the database credential** as a secret on a GitHub deployment
@@ -92,7 +92,7 @@ alarm.
    `.github/workflows/selftest.yml`.
 
 Do not make the rehearsal a required check on its own. It runs only on pull
-requests that change a migration, and it passes, with a warning, whenever it has
+requests that match its path filter, such as one adding a migration, and it passes, with a warning, whenever it has
 no credential: on a fork pull request, or before the secret is set up. A required
 check that passes without running is worse than none.
 
@@ -219,11 +219,12 @@ there. The job passes with a warning and a "did not run" summary. Using
 your database, which is worse than the gap.
 
 **Will it slow my pipeline down?**
-By about a minute, and only on pull requests that change a migration.
+By about a minute, and only on pull requests that match its path filter.
 
 **What if a statement cannot run inside a transaction?**
 `CREATE INDEX CONCURRENTLY` is the usual case. It cannot be rehearsed, so the run
-reports a warning and stays green. Check that migration by hand.
+reports a warning and stays green. The run stops there, so later migrations in the
+same pull request are not rehearsed either. Check them by hand.
 
 **What if my migration tool wraps each file in its own transaction?**
 That works. The rehearsal behaves the same way, and stops at the first failure.
@@ -240,7 +241,9 @@ That works. The rehearsal behaves the same way, and stops at the first failure.
   `.github/workflows/selftest.yml`.
 
 The latest self-test run. "Database" marks a result read from Postgres itself,
-not from the tool's own report:
+not from the tool's own report: `--allow-loopback-target` is the self-test's
+flag for a throwaway local Postgres: it skips the expected-database check, and
+only on a loopback host.
 
 | Case | Result |
 |---|---|
