@@ -10,6 +10,10 @@
 //      undocumented placeholder is a value someone has to reverse-engineer.
 //   3. Every placeholder documented in the README is actually used. A stale row
 //      sends people looking for something that is not there.
+//   4. Every action in a reference workflow is pinned to a full commit SHA, and
+//      to the same one this repository's own workflows run. Dependabot bumps the
+//      pins under .github/workflows and cannot see reference/, so without this
+//      the copies people adopt fall behind the ones that are tested.
 //
 // It also refuses to pass on a workflow with no placeholders at all, because
 // that is what a half-finished substitution looks like, and because every check
@@ -78,6 +82,28 @@ if (unused.length > 0) {
   );
 }
 
+const USES = /^\s*-?\s*uses:\s*([^@\s]+)@(\S+)/gm;
+const pinsIn = (text) => [...text.matchAll(USES)].map((m) => ({ action: m[1], ref: m[2] }));
+const tested = new Map();
+for (const file of fs.readdirSync(path.join(ROOT, '.github/workflows'))) {
+  for (const { action, ref } of pinsIn(read(path.join('.github/workflows', file)))) tested.set(action, ref);
+}
+let pinned = 0;
+for (const file of WORKFLOWS) {
+  for (const { action, ref } of pinsIn(read(file))) {
+    pinned++;
+    if (!/^[0-9a-f]{40}$/.test(ref)) {
+      problems.push(`${file}: ${action}@${ref} is not pinned to a full commit SHA.`);
+    } else if (tested.get(action) !== ref) {
+      problems.push(
+        `${file}: ${action}@${ref} differs from the ${tested.get(action) ?? 'nothing'} this repository's ` +
+          'own workflows run. Copy the pin across, so what people adopt is what CI tested.',
+      );
+    }
+  }
+}
+if (pinned === 0) problems.push('found no `uses:` in the reference workflows: this check is reading the wrong files.');
+
 if (problems.length > 0) {
   console.error('Placeholder check FAILED:\n');
   for (const p of problems) console.error(`  - ${p}`);
@@ -87,5 +113,5 @@ if (problems.length > 0) {
 
 console.log(
   `Placeholder check ok: ${WORKFLOWS.length} workflows parse, ` +
-    `${used.size} placeholders, all documented (${list(used)}).`,
+    `${used.size} placeholders, all documented (${list(used)}), ${pinned} action pins match.`,
 );

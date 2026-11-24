@@ -70,6 +70,10 @@ If you add a placeholder to a workflow, document it in the README table. CI will
 tell you if you forget, and it will tell you if you document one that nothing
 uses.
 
+When Dependabot moves an action pin under `.github/workflows/`, copy the same SHA
+into `reference/*.yml`. Dependabot does not read `reference/`, and CI fails
+until the pins agree.
+
 ## Two rules that shape the code
 
 **The rollback is the safety argument.** Any change that weakens a guard needs to

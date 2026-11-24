@@ -24,6 +24,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one-line code span. A migration named with a line break could otherwise
   write a `::warning::` workflow command or a forged heading into the job log
   and the job summary, and markdown in any of the three rendered there.
+- The reference gate runs the rehearsal tool, its dependencies and its lockfile
+  from the base commit, and reads only the migration files from the pull
+  request. A pull request that edited the runner or the lockfile could
+  otherwise print the database credential from the step that holds it. The
+  remaining path, a pull request editing the workflow file itself, is
+  documented in the workflow and the article, with the mitigations.
+- Every action in the reference workflows and in this repository's own is
+  pinned to a full commit SHA. The reference workflows had fallen behind on
+  `@v5` tags, because Dependabot does not see `reference/`, and
+  `check-placeholders` now fails when their pins differ from the tested ones.
 
 ### Fixed
 
