@@ -220,6 +220,34 @@ jobs:
           grep -q 'not run: the target or the migrations were refused' tc.log
           echo "Refused before dialling. OK"
 
+      # Postgres reads the `/*` and `*/` below as string contents and runs the
+      # `commit` between them. A comment stripper that ignores quoting deletes
+      # that `commit` along with what it takes for a comment.
+      - name: Must see a commit behind a comment marker inside a string
+        run: |
+          set -euo pipefail
+          trap 'rm -f examples/migrations/2099*.sql' EXIT
+          cat > examples/migrations/2099010100000350_rehearsal_hidden_commit.sql <<'SQL'
+          select '/*';
+          commit;
+          select '*/';
+          SQL
+          set +e
+          npx tsx reference/run-rehearsal.ts --allow-loopback-target > hidden.log 2>&1
+          code=$?
+          set -e
+          cat hidden.log
+          if [ $code -eq 0 ]; then
+            echo '::error::A commit behind a quoted comment marker was accepted.'
+            exit 1
+          fi
+          if ! grep -q 'transaction control' hidden.log; then
+            echo '::error::Refused, but not by guard 2. The commit was not seen.'
+            exit 1
+          fi
+          grep -q 'not run: the target or the migrations were refused' hidden.log
+          echo "Saw the hidden commit and refused before dialling. OK"
+
       # The guard the text check CANNOT provide. Bare `end;` commits, and
       # banning the word `end` would reject every `end if` in every guarded
       # migration, so this is the case that proves the savepoint is load-bearing

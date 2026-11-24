@@ -238,9 +238,124 @@ export function envRefusal(
  * Guard 2: transaction control in the SQL. Refused before anything is dialled.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-/** Comments removed so a header discussing `commit` is not itself a refusal. */
+/**
+ * Comments removed so a header discussing `commit` is not itself a refusal.
+ *
+ * A lexer rather than a pattern, because `/*` and `--` open a comment only where
+ * Postgres reads one. Inside a string, a quoted identifier or a line comment
+ * they are text, and a stripper that takes them at face value deletes
+ * everything up to the next `*\/`, a real `commit` included. So this walks the
+ * SQL the way Postgres's own scanner does:
+ *
+ * - String literals and quoted identifiers are kept verbatim (see
+ *   `transactionControl` for why). A backslash escapes a quote only in an
+ *   `E'...'` string, which holds while `standard_conforming_strings` is on, the
+ *   default since PostgreSQL 9.1.
+ * - Block comments nest, as they do in Postgres.
+ * - A dollar-quoted body is kept, with its own comments stripped inside the
+ *   body only. A function body is plpgsql, where comments read the same, and a
+ *   marker inside it cannot reach past the closing tag.
+ * - An unterminated comment is kept as text. Postgres rejects the file anyway,
+ *   and keeping the text can only over-refuse.
+ *
+ * Each character is visited a bounded number of times, so the cost is linear
+ * in the file's length whatever the file contains.
+ */
 export function stripComments(sql: string): string {
-  return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ');
+  return strip(sql, true);
+}
+
+const IDENT_CHAR = /[A-Za-z0-9_$\u0080-￿]/;
+const DOLLAR_TAG = /\$(?:[A-Za-z_\u0080-￿][A-Za-z0-9_\u0080-￿]*)?\$/y;
+
+function strip(sql: string, dollarQuotes: boolean): string {
+  const out: string[] = [];
+  const n = sql.length;
+  let i = 0;
+  while (i < n) {
+    const c = sql.charAt(i);
+    const next = sql.charAt(i + 1);
+    if (c === '-' && next === '-') {
+      let end = i + 2;
+      while (end < n && sql[end] !== '\n' && sql[end] !== '\r') end++;
+      out.push(' ');
+      i = end;
+    } else if (c === '/' && next === '*') {
+      const end = blockCommentEnd(sql, i);
+      if (end === -1) {
+        out.push(sql.slice(i));
+        break;
+      }
+      out.push(' ');
+      i = end;
+    } else if (c === "'" || c === '"') {
+      const backslashEscapes = c === "'" && isEStringPrefix(sql, i);
+      const end = quotedEnd(sql, i, c, backslashEscapes);
+      out.push(sql.slice(i, end));
+      i = end;
+    } else if (c === '$' && dollarQuotes && !(i > 0 && IDENT_CHAR.test(sql.charAt(i - 1)))) {
+      DOLLAR_TAG.lastIndex = i;
+      const tag = DOLLAR_TAG.exec(sql)?.[0];
+      const close = tag ? sql.indexOf(tag, i + tag.length) : -1;
+      if (!tag) {
+        out.push(c);
+        i++;
+      } else if (close === -1) {
+        out.push(sql.slice(i));
+        break;
+      } else {
+        // One level only: a nested dollar quote inside the body is read as
+        // text, which keeps the walk linear and still cannot cross `close`.
+        out.push(tag, strip(sql.slice(i + tag.length, close), false), tag);
+        i = close + tag.length;
+      }
+    } else {
+      out.push(c);
+      i++;
+    }
+  }
+  return out.join('');
+}
+
+/** Where a nesting block comment opened at `start` ends, or -1 if it never does. */
+function blockCommentEnd(sql: string, start: number): number {
+  let depth = 0;
+  let j = start;
+  while (j < sql.length) {
+    if (sql[j] === '/' && sql[j + 1] === '*') {
+      depth++;
+      j += 2;
+    } else if (sql[j] === '*' && sql[j + 1] === '/') {
+      depth--;
+      j += 2;
+      if (depth === 0) return j;
+    } else {
+      j++;
+    }
+  }
+  return -1;
+}
+
+/** An `E` or `e` directly before the quote, and not the tail of a longer word. */
+function isEStringPrefix(sql: string, quote: number): boolean {
+  const prefix = sql.charAt(quote - 1);
+  return (prefix === 'E' || prefix === 'e') && !(quote > 1 && IDENT_CHAR.test(sql.charAt(quote - 2)));
+}
+
+/** The index just past the quote that closes the one at `start`, or the end of the SQL. */
+function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: boolean): number {
+  let j = start + 1;
+  while (j < sql.length) {
+    if (backslashEscapes && sql[j] === '\\') {
+      j += 2;
+    } else if (sql[j] === quote) {
+      if (sql[j + 1] !== quote) return j + 1;
+      j += 2;
+    } else {
+      j++;
+    }
+  }
+  return sql.length;
 }
 
 /**

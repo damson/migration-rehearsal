@@ -128,7 +128,10 @@ dialled, and a file containing `commit` or `rollback` is refused.
 
 The text scan is deliberately literal: comments are stripped, so a header
 explaining that a migration does not commit is not itself a refusal, but string
-literals are not stripped. A migration is free to reword prose that trips this.
+literals are not stripped. Comments are found the way Postgres finds them. A
+`/*` inside a string, or after `--`, is text and not the start of a comment, so
+it cannot hide a `commit` that follows it. A migration is free to reword prose
+that trips this.
 Over-refusing costs a rewrite. Under-refusing costs a write to a live database
 that nothing rolls back.
 

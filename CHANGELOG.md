@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Guard 2 finds comments the way Postgres does. It read any `/*` as the start
+  of a comment, including one inside a string literal, a quoted identifier, a
+  dollar-quoted body or a `--` comment, and deleted everything up to the next
+  `*/`. A `commit` placed between the two passed guard 2 and ran for real,
+  leaving guard 3 to report a write that had already happened. The stripper is
+  now a lexer that honours quoting, `E''` escapes, dollar quotes and nested
+  block comments, and its cost is linear: a few megabytes of unterminated `/*`
+  could previously hold the job until its timeout. The self-test watches the
+  quoted case refuse.
+
 ### Fixed
 
 - A migrations directory in which no filename carries a version is refused,

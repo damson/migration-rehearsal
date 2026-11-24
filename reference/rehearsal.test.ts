@@ -167,6 +167,43 @@ describe('guard 2: transaction control in the SQL', () => {
     expect(transactionControl('select rollback_at from t;')).toEqual([]);
   });
 
+  // A comment marker opens a comment only where Postgres would read one. Each
+  // of these puts `/*` somewhere it is text, so Postgres runs the `commit`, and
+  // a stripper that took the marker at face value would hide it up to the `*/`.
+  it.each([
+    ['a single-quoted string', "select '/*';\ncommit;\nselect '*/';"],
+    ['a string with a doubled quote', "select 'it''s /*';\ncommit;\nselect '*/';"],
+    ['an E string with an escaped quote', "select E'\\' /* ';\ncommit;\n-- */"],
+    ['a quoted identifier', 'select 1 as "/*";\ncommit;\nselect 1 as "*/";'],
+    ['a line comment', '-- note /*\ncommit;\n-- */'],
+    ['a dollar-quoted string', 'select $$ /* $$;\ncommit;\nselect $$ */ $$;'],
+    ['a tagged dollar-quoted string', 'select $t$ /* $t$;\ncommit;\nselect $t$ */ $t$;'],
+  ])('sees a commit after a comment marker inside %s', (_where, sql) => {
+    expect(transactionControl(sql)).toEqual(['commit']);
+  });
+
+  it('reads block comments as nesting, the way Postgres does', () => {
+    expect(transactionControl('/* outer /* inner */ commit */ select 1;')).toEqual([]);
+  });
+
+  it('strips the comments inside a function body without letting them reach past it', () => {
+    expect(transactionControl('do $$ begin -- commit later\n perform 1; end $$;')).toEqual([]);
+    expect(transactionControl('do $$ begin /* commit */ perform 1; end $$;')).toEqual([]);
+    expect(transactionControl('do $$ begin perform 1; /* end $$;\ncommit;\n-- */')).toEqual(['commit']);
+  });
+
+  it('keeps the text of an unterminated comment, which can only over-refuse', () => {
+    expect(transactionControl('select 1; /* commit')).toEqual(['commit']);
+  });
+
+  it('reads a file full of unterminated comment openers in linear time', () => {
+    // 300 KB of `/* ` with no `*/`. A lazy `/\*[\s\S]*?\*\/` rescans to the end
+    // from every opener, which takes seconds here and minutes at a few MB.
+    const started = performance.now();
+    transactionControl('/* '.repeat(100_000));
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   it('refuses to report a rehearsal that read no files at all', () => {
     // An empty directory makes every per-file loop vacuous, so without this the
     // run reports a clean bill of health for having checked nothing.
