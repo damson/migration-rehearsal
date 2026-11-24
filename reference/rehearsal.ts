@@ -248,9 +248,9 @@ export function envRefusal(
  * SQL the way Postgres's own scanner does:
  *
  * - String literals and quoted identifiers are kept verbatim (see
- *   `transactionControl` for why). A backslash escapes a quote only in an
- *   `E'...'` string, which holds while `standard_conforming_strings` is on, the
- *   default since PostgreSQL 9.1.
+ *   `transactionControl` for why). A backslash escapes a quote in an `E'...'`
+ *   string, and in every string when `backslashQuotes` is set: that is how
+ *   Postgres reads a plain string while `standard_conforming_strings` is off.
  * - Block comments nest, as they do in Postgres.
  * - A dollar-quoted body is kept, with its own comments stripped inside the
  *   body only. A function body is plpgsql, where comments read the same, and a
@@ -261,14 +261,14 @@ export function envRefusal(
  * Each character is visited a bounded number of times, so the cost is linear
  * in the file's length whatever the file contains.
  */
-export function stripComments(sql: string): string {
-  return strip(sql, true);
+export function stripComments(sql: string, backslashQuotes = false): string {
+  return strip(sql, true, backslashQuotes);
 }
 
-const IDENT_CHAR = /[A-Za-z0-9_$\u0080-￿]/;
-const DOLLAR_TAG = /\$(?:[A-Za-z_\u0080-￿][A-Za-z0-9_\u0080-￿]*)?\$/y;
+const IDENT_CHAR = /[A-Za-z0-9_$\u0080-\uffff]/;
+const DOLLAR_TAG = /\$(?:[A-Za-z_\u0080-\uffff][A-Za-z0-9_\u0080-\uffff]*)?\$/y;
 
-function strip(sql: string, dollarQuotes: boolean): string {
+function strip(sql: string, dollarQuotes: boolean, backslashQuotes: boolean): string {
   const out: string[] = [];
   const n = sql.length;
   let i = 0;
@@ -289,7 +289,7 @@ function strip(sql: string, dollarQuotes: boolean): string {
       out.push(' ');
       i = end;
     } else if (c === "'" || c === '"') {
-      const backslashEscapes = c === "'" && isEStringPrefix(sql, i);
+      const backslashEscapes = c === "'" && (backslashQuotes || isEStringPrefix(sql, i));
       const end = quotedEnd(sql, i, c, backslashEscapes);
       out.push(sql.slice(i, end));
       i = end;
@@ -306,7 +306,7 @@ function strip(sql: string, dollarQuotes: boolean): string {
       } else {
         // One level only: a nested dollar quote inside the body is read as
         // text, which keeps the walk linear and still cannot cross `close`.
-        out.push(tag, strip(sql.slice(i + tag.length, close), false), tag);
+        out.push(tag, strip(sql.slice(i + tag.length, close), false, backslashQuotes), tag);
         i = close + tag.length;
       }
     } else {
@@ -383,7 +383,16 @@ export const TRANSACTION_CONTROL = ['commit', 'rollback'] as const;
  * costs a write to a live database that nothing rolls back.
  */
 export function transactionControl(sql: string): string[] {
-  const body = stripComments(sql).toLowerCase();
+  // Read both ways a plain string can end. A migration can turn
+  // `standard_conforming_strings` off for its own session, and a target can run
+  // with it off, so which reading Postgres uses is not known here. Refusing
+  // when either reading finds a statement costs, at worst, a rewrite.
+  const standard = hitsIn(stripComments(sql));
+  return standard.length > 0 ? standard : hitsIn(stripComments(sql, true));
+}
+
+function hitsIn(stripped: string): string[] {
+  const body = stripped.toLowerCase();
   const hits: { at: number; word: string }[] = [];
   for (const word of TRANSACTION_CONTROL) {
     const re = new RegExp(`(?<![a-z0-9_$])${word.replace(/ /g, '\\s+')}(?![a-z0-9_$])`, 'g');

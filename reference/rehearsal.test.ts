@@ -174,6 +174,10 @@ describe('guard 2: transaction control in the SQL', () => {
     ['a single-quoted string', "select '/*';\ncommit;\nselect '*/';"],
     ['a string with a doubled quote', "select 'it''s /*';\ncommit;\nselect '*/';"],
     ['an E string with an escaped quote', "select E'\\' /* ';\ncommit;\n-- */"],
+    [
+      'a plain string read with standard_conforming_strings off',
+      "set standard_conforming_strings = off;\nselect '\\' /* ';\ncommit;\n-- */",
+    ],
     ['a quoted identifier', 'select 1 as "/*";\ncommit;\nselect 1 as "*/";'],
     ['a line comment', '-- note /*\ncommit;\n-- */'],
     ['a dollar-quoted string', 'select $$ /* $$;\ncommit;\nselect $$ */ $$;'],

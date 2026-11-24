@@ -14,7 +14,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `*/`. A `commit` placed between the two passed guard 2 and ran for real,
   leaving guard 3 to report a write that had already happened. The stripper is
   now a lexer that honours quoting, `E''` escapes, dollar quotes and nested
-  block comments, and its cost is linear: a few megabytes of unterminated `/*`
+  block comments. It reads each plain string both with and without
+  backslash escapes, because a migration can turn `standard_conforming_strings`
+  off for its own session, and refuses if either reading finds a statement. Its
+  cost is linear: a few megabytes of unterminated `/*`
   could previously hold the job until its timeout. The self-test watches the
   quoted case refuse.
 
