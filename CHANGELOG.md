@@ -20,7 +20,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cost is linear: a few megabytes of unterminated `/*`
   could previously hold the job until its timeout. The self-test watches the
   quoted case refuse.
-- Guard 2 refuses `prepare transaction`, which detaches the rehearsal's
+- Guard 2 refuses `abort`, `end work` and `end transaction`, which are
+  `rollback` and `commit` under other names, and `prepare transaction`, which detaches the rehearsal's
   transaction and leaves every later statement to commit on its own. The
   headers that said it refuses all transaction control now say what it refuses,
   and that a bare `end;` is caught by guard 3 after its write.

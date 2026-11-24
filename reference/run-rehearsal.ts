@@ -14,8 +14,9 @@
 //   1. It refuses a target that is not the expected project, before dialling.
 //      Production is never a rehearsal target, and the refusal is the only guard
 //      there is: once a log line names the database reached, it has been.
-//   2. It refuses any migration containing `commit`, `rollback` or `prepare
-//      transaction`, before dialling. A bare `end;` also commits, and guard 2
+//   2. It refuses any migration containing `commit`, `rollback`, `prepare
+//      transaction` or a synonym (`abort`, `end work`, `end transaction`),
+//      before dialling. A bare `end;` also commits, and guard 2
 //      cannot tell it from the `end` that closes a block, so it is not refused.
 //   3. It opens a savepoint and rolls back TO it, so a commit guard 2 missed
 //      fails the run loudly instead of passing silently. That write has

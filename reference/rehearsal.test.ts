@@ -152,6 +152,8 @@ describe('guard 2: transaction control in the SQL', () => {
     expect(transactionControl('create table t (id int);\ncommit;')).toEqual(['commit']);
     expect(transactionControl('rollback;\ncommit;')).toEqual(['rollback', 'commit']);
     expect(transactionControl("create table t (id int);\nprepare transaction 'x';")).toEqual(['prepare transaction']);
+    expect(transactionControl('abort;')).toEqual(['abort']);
+    expect(transactionControl('end work;\nend transaction;')).toEqual(['end work', 'end transaction']);
     // A prepared statement is not a prepared transaction.
     expect(transactionControl('prepare get_t as select 1;')).toEqual([]);
   });

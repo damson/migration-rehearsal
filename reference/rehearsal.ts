@@ -389,7 +389,9 @@ function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: 
 
 /**
  * Statements that would END the rehearsal's transaction and let a migration's
- * writes survive. Three of them, and the ones that are absent matter as much.
+ * writes survive, and the ones that are absent matter as much. `abort` is
+ * `rollback` by another name, and `end work` and `end transaction` are `commit`:
+ * the word after `end` makes them unambiguous where a bare `end` is not.
  *
  * `prepare transaction` is here because it detaches the open transaction for a
  * two-phase commit and leaves the session outside any transaction, so every
@@ -407,7 +409,14 @@ function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: 
  * plpgsql blocks, and no text pattern separates them. A savepoint can, but only
  * after the fact: guard 3 reports that commit once it has happened.
  */
-export const TRANSACTION_CONTROL = ['commit', 'rollback', 'prepare transaction'] as const;
+export const TRANSACTION_CONTROL = [
+  'commit',
+  'rollback',
+  'abort',
+  'end work',
+  'end transaction',
+  'prepare transaction',
+] as const;
 
 /**
  * Which of them the file contains, in the order they appear.
