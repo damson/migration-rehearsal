@@ -286,6 +286,18 @@ non-production database, and the runner should never print a connection string, 
 password or a key. Printing the host and the database identifier is fine: those
 are not the secret.
 
+The code that holds the credential comes from the base branch. The reference
+workflow checks out the base commit for the tool it runs, and the pull request
+beside it for the migrations it reads. A pull request that edits the runner, its
+dependencies or the lockfile cannot make that step print the secret.
+
+One way in stays open. GitHub runs the copy of the workflow file that the pull
+request carries, so anyone who can push a branch can edit it to print the
+secret. The edit sits in `.github/workflows/`, where review sees it, but the run
+comes first. That is why the role should own nothing beyond the schema its
+migrations touch. Where write access reaches further than the people trusted
+with that database, add required reviewers to the environment.
+
 ## Operational details that are not optional
 
 **Concurrency, cancel in progress, keyed per pull request.** The rehearsal holds DDL

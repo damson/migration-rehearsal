@@ -49,16 +49,31 @@ name: Rehearse migrations
 # that environment, so every other workflow in the repository, scheduled jobs
 # included, cannot read this credential.
 #
+# WHY THE CODE COMES FROM THE BASE BRANCH. The step that holds the credential
+# runs the rehearsal tool, its dependencies and the lockfile they install from.
+# Taken from the pull request, any of them could print the connection string,
+# and the edit would look like ordinary code. So they are checked out from the
+# base commit into `trusted/`, and the pull request's tree goes to `pr/`, where
+# only its migration files are read. A change to the tool is rehearsed by the
+# self-test, not by this job, and takes effect here once it merges.
+#
+# What this does not stop: GitHub runs the copy of THIS FILE that the pull
+# request carries, so anyone who can push a branch can edit it to print the
+# secret. That edit is in `.github/workflows/`, where a reviewer sees it, but
+# the run happens first. Give the credential a role that owns only the schema
+# its migrations touch, on a non-production database, and if write access
+# reaches further than the people trusted with that database, add required
+# reviewers to the environment.
+#
 # Security note: no pull request title, body, branch name or commit message is
 # interpolated into any `run:` step. The migration SQL is read from disk by the
 # runner and passed to the driver as a parameterless query, never through a
-# shell.
+# shell. Actions are pinned to a full commit SHA, with the release in a comment.
 
 on:
   pull_request:
     paths:
       - '<MIGRATIONS_DIR>/**.sql'
-      - '<REHEARSAL_DIR>/**'
       - '.github/workflows/rehearse-migrations.yml'
 
 permissions:
@@ -78,21 +93,34 @@ jobs:
     timeout-minutes: 10
     environment: <REHEARSAL_ENVIRONMENT>
     steps:
-      - uses: actions/checkout@v5
+      - name: Check out the base branch, for the code that runs
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          persist-credentials: false
+
+      - name: Check out the pull request, for its migrations only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: pr
+          persist-credentials: false
 
       - name: Set up Node
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '<NODE_VERSION>'
 
       - name: Install dependencies
+        working-directory: trusted
         run: npm ci --no-audit --no-fund
 
       - name: Rehearse this branch's migrations against real rows
+        working-directory: trusted
         env:
           REHEARSAL_TARGET_DB_URL: ${{ secrets.<REHEARSAL_DB_URL_SECRET> }}
           REHEARSAL_EXPECTED_PROJECT_REF: ${{ vars.<EXPECTED_PROJECT_REF> }}
-          REHEARSAL_MIGRATIONS_DIR: <MIGRATIONS_DIR>
+          REHEARSAL_MIGRATIONS_DIR: ../pr/<MIGRATIONS_DIR>
         run: |
           set -euo pipefail
           # Two ways the credential is legitimately absent: the setup checklist
