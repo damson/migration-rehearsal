@@ -280,8 +280,8 @@ branch policy matches.
 
 What it does buy is real, and it is blast radius. An environment secret is
 readable only by a job that declares that environment. Every other workflow in
-the repository, including every scheduled job and every job someone adds later,
-cannot read this credential. A repository secret is readable by all of them.
+the repository that does not declare the environment, including every scheduled
+job, cannot read this credential. A repository secret is readable by all of them.
 
 The credential itself should be a role scoped to what the rehearsal needs, on a
 non-production database, and the runner should never print a connection string, a
@@ -293,12 +293,20 @@ workflow checks out the base commit for the tool it runs, and the pull request
 beside it for the migrations it reads. A pull request that edits the runner, its
 dependencies or the lockfile cannot make that step print the secret.
 
-One way in stays open. GitHub runs the copy of the workflow file that the pull
-request carries, so anyone who can push a branch can edit it to print the
-secret. The edit sits in `.github/workflows/`, where review sees it, but the run
-comes first. That is why the role should own nothing beyond the schema its
-migrations touch. Where write access reaches further than the people trusted
-with that database, add required reviewers to the environment.
+One way in stays open. A `pull_request` run uses the workflow files the pull
+request carries, so anyone who can push a branch can edit this one, or add a
+workflow whose job declares the environment. That job gets the secret, and can
+print it, send it elsewhere or commit writes with it. The edit sits in
+`.github/workflows/`, where review sees it, but the run comes first.
+
+Only required reviewers on the environment stop that before the secret is
+released, and they cost an approval on every run. Without them, the credential
+is exactly as safe as push access to the repository. That is why the role
+should own nothing beyond the schema its migrations touch.
+
+The report is public wherever the Actions runs are. A failure quotes the first
+line of the database's error, and some errors quote a value from a row. On a
+public repository, point the rehearsal only at data you would publish.
 
 ## Operational details that are not optional
 

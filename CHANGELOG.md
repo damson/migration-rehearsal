@@ -38,8 +38,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   from the base commit, and reads only the migration files from the pull
   request. A pull request that edited the runner or the lockfile could
   otherwise print the database credential from the step that holds it. The
-  remaining path, a pull request editing the workflow file itself, is
-  documented in the workflow and the article, with the mitigations.
+  remaining path is documented in the workflow and the article: a pull request
+  that edits a workflow, or adds one declaring the environment, gets the
+  secret, and only required reviewers on the environment stop that. Both also
+  say that a failure can quote a row value into a report that is public on a
+  public repository.
 - Every action in the reference workflows and in this repository's own is
   pinned to a full commit SHA. The reference workflows had fallen behind on
   `@v5` tags, because Dependabot does not see `reference/`, and

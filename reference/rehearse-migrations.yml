@@ -59,13 +59,20 @@ name: Rehearse migrations
 # only its migration files are read. A change to the tool is rehearsed by the
 # self-test, not by this job, and takes effect here once it merges.
 #
-# What this does not stop: GitHub runs the copy of THIS FILE that the pull
-# request carries, so anyone who can push a branch can edit it to print the
-# secret. That edit is in `.github/workflows/`, where a reviewer sees it, but
-# the run happens first. Give the credential a role that owns only the schema
-# its migrations touch, on a non-production database, and if write access
-# reaches further than the people trusted with that database, add required
-# reviewers to the environment.
+# What this does not stop: a `pull_request` run uses the workflow files the
+# pull request carries. Anyone who can push a branch can edit this file, or add
+# any workflow whose job declares this environment, and that job receives the
+# secret. It can print it, send it elsewhere, or connect and commit writes. The
+# edit sits in `.github/workflows/`, where review sees it, but the run comes
+# first. Only required reviewers on the environment stop it before the secret
+# is released, at the cost of approving every run. Without them the credential
+# is exactly as safe as push access to the repository, so give it a role that
+# owns only the schema its migrations touch, on a non-production database.
+#
+# WHAT THE REPORT PRINTS. A failure quotes the first line of the database's
+# error, and some errors quote a value from a row. The report goes to the job
+# log and summary, which everyone who can read this repository's Actions runs
+# can see, so on a public repository point it only at data you would publish.
 #
 # Security note: no pull request title, body, branch name or commit message is
 # interpolated into any `run:` step. The migration SQL is read from disk by the
