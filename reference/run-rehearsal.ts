@@ -14,9 +14,13 @@
 //   1. It refuses a target that is not the expected project, before dialling.
 //      Production is never a rehearsal target, and the refusal is the only guard
 //      there is: once a log line names the database reached, it has been.
-//   2. It refuses any migration carrying transaction control, before dialling.
-//   3. It opens a savepoint and rolls back TO it, so a COMMIT that slipped past
-//      guard 2 makes that statement fail loudly instead of passing silently.
+//   2. It refuses any migration containing `commit`, `rollback`, `prepare
+//      transaction` or a synonym (`abort`, `end work`, `end transaction`),
+//      before dialling. A bare `end;` also commits, and guard 2
+//      cannot tell it from the `end` that closes a block, so it is not refused.
+//   3. It opens a savepoint and rolls back TO it, so a commit guard 2 missed
+//      fails the run loudly instead of passing silently. That write has
+//      already happened by then, which is why guard 2 comes first.
 //   4. It counts the target's public objects before and after, so the rollback
 //      is measured rather than trusted.
 //
@@ -37,6 +41,8 @@ import {
   exitCode,
   fail,
   isLoopback,
+  linkedComponent,
+  literal,
   loopbackOverride,
   normaliseError,
   ok,
@@ -53,8 +59,31 @@ function migrationFiles(): string[] {
   return fs.readdirSync(DIR).filter((f) => f.endsWith('.sql'));
 }
 
+/** Opened with O_NOFOLLOW, so a file swapped for a link after the check is not followed either. */
 function readMigration(file: string): string {
-  return fs.readFileSync(path.join(DIR, file), 'utf8');
+  const fd = fs.openSync(path.join(DIR, file), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    return fs.readFileSync(fd, 'utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function isSymlink(p: string): boolean {
+  try {
+    return fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+/** `lstat`, so a symlink is reported as one rather than followed. */
+function isRegularFile(file: string): boolean {
+  try {
+    return fs.lstatSync(path.join(DIR, file)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -85,6 +114,19 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  // Before the directory is listed: a linked directory would list files from
+  // wherever the link points.
+  const linked = linkedComponent(process.cwd(), MIGRATIONS_DIR, isSymlink);
+  if (linked) {
+    console.log(
+      render([
+        fail('migrations', `${literal(linked)} is a symlink: refusing to read migrations through a link.`),
+        ok('rehearsal', 'not run: the target or the migrations were refused above.'),
+      ]),
+    );
+    return 1;
+  }
+
   const files = migrationFiles();
   const refusals = preDialFindings({
     url,
@@ -94,6 +136,7 @@ async function main(): Promise<number> {
     targetChecks: targetFindings,
     read: readMigration,
     dir: MIGRATIONS_DIR,
+    isRegular: isRegularFile,
   });
   if (exitCode(refusals) !== 0) {
     console.log(render([...refusals, ok('rehearsal', 'not run: the target or the migrations were refused above.')]));
@@ -105,13 +148,13 @@ async function main(): Promise<number> {
   try {
     await client.connect();
   } catch (e) {
-    console.log(render([...refusals, fail('connect', normaliseError(e).message ?? 'could not connect')]));
+    console.log(render([...refusals, fail('connect', literal(normaliseError(e).message ?? 'could not connect'))]));
     return 1;
   }
   try {
     findings = [...refusals, ...(await rehearsal(client, files, readMigration))];
   } catch (e) {
-    findings = [...refusals, fail('rehearsal', normaliseError(e).message ?? 'the rehearsal threw')];
+    findings = [...refusals, fail('rehearsal', literal(normaliseError(e).message ?? 'the rehearsal threw'))];
   } finally {
     await client.end().catch(() => {});
   }
@@ -123,6 +166,8 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((e) => {
-    console.error(e);
+    // One line through `literal`: the message can carry a filename the pull
+    // request chose, and stderr reaches the same job log as the report.
+    console.error(literal(e instanceof Error ? e.message : String(e)));
     process.exit(1);
   });

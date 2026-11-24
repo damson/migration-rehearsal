@@ -101,10 +101,39 @@ export function exitCode(findings: readonly Finding[]): number {
 
 const MARK: Record<Level, string> = { ok: 'ok  ', warn: 'WARN', fail: 'FAIL' };
 
-/** The report, as markdown a job summary can swallow whole. */
+/**
+ * The report, as markdown a job summary can swallow whole.
+ *
+ * One line per finding, whatever the finding holds. The report also goes to the
+ * job log, where a line starting `::` is a workflow command, so a line break
+ * that reaches here is flattened rather than trusted.
+ */
 export function render(findings: readonly Finding[]): string {
-  const lines = findings.map((f) => `- \`${MARK[f.level]}\` **${f.check}**: ${f.message}`);
+  const lines = findings.map((f) => oneLine(`- \`${MARK[f.level]}\` **${f.check}**: ${f.message}`));
   return [`### Migration rehearsal: ${worst(findings).toUpperCase()}`, '', ...lines, ''].join('\n');
+}
+
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g;
+
+function oneLine(text: string): string {
+  return text.replace(CONTROL, '?');
+}
+
+/**
+ * Text the tool did not write (a filename, a database message, a ledger
+ * version), made safe to print. A pull request chooses all three, and the
+ * report is read as markdown and as a log.
+ *
+ * The result is one line, and a code span, inside which markdown is inert. Its
+ * fence is one backtick longer than the longest run inside, so no backtick in
+ * the text can close it early.
+ */
+export function literal(text: string): string {
+  const flat = oneLine(text);
+  const longest = Math.max(0, ...(flat.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = '`'.repeat(longest + 1);
+  const pad = flat.startsWith('`') || flat.endsWith('`') ? ' ' : '';
+  return `${fence}${pad}${flat}${pad}${fence}`;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -238,14 +267,184 @@ export function envRefusal(
  * Guard 2: transaction control in the SQL. Refused before anything is dialled.
  * ──────────────────────────────────────────────────────────────────────────── */
 
-/** Comments removed so a header discussing `commit` is not itself a refusal. */
-export function stripComments(sql: string): string {
-  return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ');
+/**
+ * Comments removed so a header discussing `commit` is not itself a refusal.
+ *
+ * A lexer rather than a pattern, because `/*` and `--` open a comment only where
+ * Postgres reads one. Inside a string, a quoted identifier or a line comment
+ * they are text, and a stripper that takes them at face value deletes
+ * everything up to the next `*\/`, a real `commit` included. So this walks the
+ * SQL the way Postgres's own scanner does:
+ *
+ * - String literals and quoted identifiers are kept verbatim (see
+ *   `transactionControl` for why). A backslash escapes a quote in an `E'...'`
+ *   string, and in every string when `backslashQuotes` is set: that is how
+ *   Postgres reads a plain string while `standard_conforming_strings` is off.
+ * - Block comments nest, as they do in Postgres.
+ * - A dollar-quoted body is kept, with its own comments stripped inside the
+ *   body only. A function body is plpgsql, where comments read the same, and a
+ *   marker inside it cannot reach past the closing tag.
+ * - An unterminated comment is kept as text. Postgres rejects the file anyway,
+ *   and keeping the text can only over-refuse.
+ *
+ * Each character is visited a bounded number of times, so the cost is linear
+ * in the file's length whatever the file contains.
+ */
+export function stripComments(sql: string, backslashQuotes = false): string {
+  return strip(sql, true, backslashQuotes);
+}
+
+const IDENT_CHAR = /[A-Za-z0-9_$\u0080-\uffff]/;
+const DOLLAR_TAG = /\$(?:[A-Za-z_\u0080-\uffff][A-Za-z0-9_\u0080-\uffff]*)?\$/y;
+
+function strip(sql: string, dollarQuotes: boolean, backslashQuotes: boolean): string {
+  const out: string[] = [];
+  const n = sql.length;
+  let i = 0;
+  while (i < n) {
+    const c = sql.charAt(i);
+    const next = sql.charAt(i + 1);
+    if (c === '-' && next === '-') {
+      let end = i + 2;
+      while (end < n && sql[end] !== '\n' && sql[end] !== '\r') end++;
+      out.push(' ');
+      i = end;
+    } else if (c === '/' && next === '*') {
+      const end = blockCommentEnd(sql, i);
+      if (end === -1) {
+        out.push(sql.slice(i));
+        break;
+      }
+      out.push(' ');
+      i = end;
+    } else if (c === "'" || c === '"') {
+      const backslashEscapes = c === "'" && (backslashQuotes || isEStringPrefix(sql, i));
+      const { end, text } = quoted(sql, i, c, backslashEscapes);
+      out.push(text);
+      i = end;
+    } else if (c === '$' && dollarQuotes && !(i > 0 && IDENT_CHAR.test(sql.charAt(i - 1)))) {
+      DOLLAR_TAG.lastIndex = i;
+      const tag = DOLLAR_TAG.exec(sql)?.[0];
+      const close = tag ? sql.indexOf(tag, i + tag.length) : -1;
+      if (!tag) {
+        out.push(c);
+        i++;
+      } else if (close === -1) {
+        out.push(sql.slice(i));
+        break;
+      } else {
+        // One level only: a nested dollar quote inside the body is read as
+        // text, which keeps the walk linear and still cannot cross `close`.
+        out.push(tag, strip(sql.slice(i + tag.length, close), false, backslashQuotes), tag);
+        i = close + tag.length;
+      }
+    } else {
+      out.push(c);
+      i++;
+    }
+  }
+  return out.join('');
+}
+
+/** Where a nesting block comment opened at `start` ends, or -1 if it never does. */
+function blockCommentEnd(sql: string, start: number): number {
+  let depth = 0;
+  let j = start;
+  while (j < sql.length) {
+    if (sql[j] === '/' && sql[j + 1] === '*') {
+      depth++;
+      j += 2;
+    } else if (sql[j] === '*' && sql[j + 1] === '/') {
+      depth--;
+      j += 2;
+      if (depth === 0) return j;
+    } else {
+      j++;
+    }
+  }
+  return -1;
+}
+
+/** An `E` or `e` directly before the quote, and not the tail of a longer word. */
+function isEStringPrefix(sql: string, quote: number): boolean {
+  const prefix = sql.charAt(quote - 1);
+  return (prefix === 'E' || prefix === 'e') && !(quote > 1 && IDENT_CHAR.test(sql.charAt(quote - 2)));
+}
+
+/**
+ * Where a string literal continues after its closing quote: the index of the
+ * next opening quote, or -1. Postgres allows spaces, tabs and `--` comments
+ * between the two, and requires at least one newline among them.
+ */
+function continuationAt(sql: string, from: number): number {
+  let k = from;
+  let newline = false;
+  while (k < sql.length) {
+    const ch = sql.charAt(k);
+    if (ch === '\n' || ch === '\r') {
+      newline = true;
+      k++;
+    } else if (ch === ' ' || ch === '\t' || ch === '\f' || ch === '\v') {
+      k++;
+    } else if (ch === '-' && sql.charAt(k + 1) === '-') {
+      while (k < sql.length && sql.charAt(k) !== '\n' && sql.charAt(k) !== '\r') k++;
+    } else {
+      break;
+    }
+  }
+  return newline && sql.charAt(k) === "'" ? k : -1;
+}
+
+/**
+ * The literal opened at `start`: the index just past its closing quote (or
+ * the end of the SQL), and its text with any comment between continued
+ * segments replaced by a space, as the scanner treats every other comment.
+ */
+function quoted(
+  sql: string,
+  start: number,
+  quote: string,
+  backslashEscapes: boolean,
+): { end: number; text: string } {
+  const segments: string[] = [];
+  let segmentStart = start;
+  let j = start + 1;
+  while (j < sql.length) {
+    if (backslashEscapes && sql[j] === '\\') {
+      j += 2;
+    } else if (sql[j] === quote) {
+      if (sql[j + 1] === quote) {
+        j += 2;
+        continue;
+      }
+      // Two string literals separated only by whitespace that holds a newline
+      // are one string to Postgres, and the second keeps the first's escape
+      // mode. So `E''` on one line and `'\' /* '` on the next are one E-string.
+      const next = quote === "'" ? continuationAt(sql, j + 1) : -1;
+      if (next === -1) {
+        segments.push(sql.slice(segmentStart, j + 1));
+        return { end: j + 1, text: segments.join(' ') };
+      }
+      segments.push(sql.slice(segmentStart, j + 1));
+      segmentStart = next;
+      j = next + 1;
+    } else {
+      j++;
+    }
+  }
+  segments.push(sql.slice(segmentStart));
+  return { end: sql.length, text: segments.join(' ') };
 }
 
 /**
  * Statements that would END the rehearsal's transaction and let a migration's
- * writes survive. Two of them, and the two that are absent matter as much.
+ * writes survive, and the ones that are absent matter as much. `abort` is
+ * `rollback` by another name, and `end work` and `end transaction` are `commit`:
+ * the word after `end` makes them unambiguous where a bare `end` is not.
+ *
+ * `prepare transaction` is here because it detaches the open transaction for a
+ * two-phase commit and leaves the session outside any transaction, so every
+ * statement after it commits on its own.
  *
  * `begin` and `start transaction` are NOT here. Banning them is the obvious
  * first draft and it is wrong twice over. Wrong in fact: inside an open
@@ -256,9 +455,17 @@ export function stripComments(sql: string): string {
  *
  * `end` is absent for a different reason, and that absence is why guard 3
  * exists. Bare `end;` DOES commit, but `end if`, `end loop` and `end $$` close
- * plpgsql blocks, and no text pattern separates them. A savepoint can.
+ * plpgsql blocks, and no text pattern separates them. A savepoint can, but only
+ * after the fact: guard 3 reports that commit once it has happened.
  */
-export const TRANSACTION_CONTROL = ['commit', 'rollback'] as const;
+export const TRANSACTION_CONTROL = [
+  'commit',
+  'rollback',
+  'abort',
+  'end work',
+  'end transaction',
+  'prepare transaction',
+] as const;
 
 /**
  * Which of them the file contains, in the order they appear.
@@ -267,8 +474,12 @@ export const TRANSACTION_CONTROL = ['commit', 'rollback'] as const;
  * prose that trips this, and over-refusing costs a rewrite, while under-refusing
  * costs a write to a live database that nothing rolls back.
  */
-export function transactionControl(sql: string): string[] {
-  const body = stripComments(sql).toLowerCase();
+export function transactionControl(sql: string, backslashQuotes = false): string[] {
+  return hitsIn(stripComments(sql, backslashQuotes));
+}
+
+function hitsIn(stripped: string): string[] {
+  const body = stripped.toLowerCase();
   const hits: { at: number; word: string }[] = [];
   for (const word of TRANSACTION_CONTROL) {
     const re = new RegExp(`(?<![a-z0-9_$])${word.replace(/ /g, '\\s+')}(?![a-z0-9_$])`, 'g');
@@ -277,17 +488,40 @@ export function transactionControl(sql: string): string[] {
   return hits.sort((a, b) => a.at - b.at).map((h) => h.word);
 }
 
-export function transactionControlFindings(file: string, hits: readonly string[]): Finding[] {
+export function transactionControlFindings(file: string, hits: readonly string[], reading = ''): Finding[] {
   if (hits.length === 0) return [];
   const unique = [...new Set(hits)].join(', ');
   return [
     fail(
-      `transaction control ${file}`,
-      `contains ${unique}, which would end the rehearsal's transaction and let this migration's writes ` +
+      `transaction control ${literal(file)}`,
+      `contains ${unique}${reading}, which would end the rehearsal's transaction and let this migration's writes ` +
         'survive against a live database. A migration never manages its own transaction here: the ' +
         'migration tool wraps each file, and so does the rehearsal. Remove the statement.',
     ),
   ];
+}
+
+/**
+ * The first directory along `dir` that is a symlink, or null.
+ *
+ * Only the components `dir` names are checked, walking from `cwd`. The
+ * working directory's own ancestry belongs to the runner; every directory
+ * below it comes from the pull request's tree, where a committed symlink would
+ * point the run at files outside it. POSIX paths, as on a GitHub-hosted runner.
+ */
+export function linkedComponent(cwd: string, dir: string, isLink: (p: string) => boolean): string | null {
+  const parts = dir.startsWith('/') ? [] : cwd.split('/').filter(Boolean);
+  for (const part of dir.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+    const at = `/${parts.join('/')}`;
+    if (isLink(at)) return at;
+  }
+  return null;
 }
 
 /**
@@ -298,12 +532,27 @@ export function migrationRefusals(
   files: readonly string[],
   read: (file: string) => string,
   dir: string,
+  isRegular: (file: string) => boolean = () => true,
 ): Finding[] {
   // Asserted, not assumed. An empty directory makes the loop below vacuous, so
   // without this the rehearsal reports a clean bill of health for a run that read
   // no files at all.
   if (files.length === 0) {
     return [fail('migrations', `no .sql files in ${dir}: refusing to report a rehearsal that read nothing.`)];
+  }
+
+  // Before any file is read. A pull request can commit a symlink, and this runs
+  // in the step that holds the credential: following one would send any file
+  // the runner can read to the database as SQL, and into the report on failure.
+  const irregular = files.filter((file) => !isRegular(file));
+  if (irregular.length > 0) {
+    return [
+      fail(
+        'migrations',
+        `${irregular.map(literal).join(', ')} in ${dir}: not a regular file. Refusing to read through a ` +
+          'link or a device: a migration is a file committed to the repository.',
+      ),
+    ];
   }
   const unversioned = files.filter((file) => versionOf(file) === null);
 
@@ -334,7 +583,7 @@ export function migrationRefusals(
       warn(
         'migrations',
         `${unversioned.length} of ${files.length} .sql file(s) in ${dir} carry no version and were not ` +
-          `rehearsed: ${unversioned.join(', ')}.`,
+          `rehearsed: ${unversioned.map(literal).join(', ')}.`,
       ),
     );
   }
@@ -359,6 +608,7 @@ export function preDialFindings(input: {
   targetChecks: (url: string, expectedRef: string) => Finding[];
   read: (file: string) => string;
   dir: string;
+  isRegular?: (file: string) => boolean;
 }): Finding[] {
   const findings: Finding[] = [...input.override.findings];
   // Under the override the target checks are the thing being skipped, so
@@ -369,7 +619,7 @@ export function preDialFindings(input: {
   // The migration checks run either way. The override is about which DATABASE
   // may be reached and says nothing about what the files may contain: a rehearsal
   // against a throwaway container still must not commit.
-  findings.push(...migrationRefusals(input.files, input.read, input.dir));
+  findings.push(...migrationRefusals(input.files, input.read, input.dir, input.isRegular));
   return findings;
 }
 
@@ -462,14 +712,14 @@ export function normaliseError(e: unknown): SqlError {
 export function failureFinding(file: string, err: SqlError): Finding {
   const blame = blameFor(err.code);
   const code = err.code ? ` [${err.code}]` : '';
-  const message = (err.message ?? 'no message').split('\n')[0];
+  const message = (err.message ?? 'no message').split('\n')[0] ?? '';
   return {
-    check: `rehearsal ${file}`,
+    check: `rehearsal ${literal(file)}`,
     // A rehearsal-limit failure is information. Blocking a pull request because the
     // rehearsal cannot express the statement would make the gate the thing to route
     // around, which is how a required check stops being read.
     level: blame === 'rehearsal-limit' ? 'warn' : 'fail',
-    message: `${message}${code}. ${blameNote(blame)}`,
+    message: `${literal(message)}${code}. ${blameNote(blame)}`,
   };
 }
 
@@ -515,7 +765,7 @@ export function nothingToRehearse(applied: number): Finding {
 }
 
 export function appliedFinding(file: string): Finding {
-  return ok(`rehearsal ${file}`, 'applied inside the transaction');
+  return ok(`rehearsal ${literal(file)}`, 'applied inside the transaction');
 }
 
 export function rolledBackFinding(count: number): Finding {
@@ -535,7 +785,7 @@ export function rolledBackFinding(count: number): Finding {
 export function escapedFinding(detail: string): Finding {
   return fail(
     'rollback',
-    `THE REHEARSAL'S SAVEPOINT WAS DESTROYED (${detail}), which happens when a statement committed. ` +
+    `THE REHEARSAL'S SAVEPOINT WAS DESTROYED (${literal(detail)}), which happens when a statement committed. ` +
       'Assume the target database was modified and check it by hand before merging anything: the ' +
       'rollback that makes this rehearsal safe did not happen.',
   );
@@ -573,7 +823,7 @@ export function strayFinding(stray: readonly string[]): Finding[] {
   return [
     warn(
       'ledger ahead',
-      `the target has ${stray.length} version(s) this branch does not: ${stray.join(', ')}. ` +
+      `the target has ${stray.length} version(s) this branch does not: ${stray.map(literal).join(', ')}. ` +
         'Ordinary when the branch predates a merge; rebase if the rehearsal result looks unrelated to your change.',
     ),
   ];
@@ -601,6 +851,22 @@ export const SHAPE_QUERY =
  * five seconds is one for a maintenance window, not one to hold the environment
  * open for.
  */
+/**
+ * How this session reads a plain string. Before dialling, guard 2 reads files
+ * the standard way. Postgres reads them with backslash escapes while this is
+ * off, which an earlier migration in the same run can do with `set`, and a
+ * target can be configured to do. A `set` does not change how its own file is
+ * read, because Postgres lexes a file before running any of it, so asking
+ * before each file is enough.
+ */
+export const CONFORMING_QUERY = "select current_setting('standard_conforming_strings') as value";
+
+async function readsBackslashEscapes(client: Queryable): Promise<boolean> {
+  const result = await client.query<{ value?: unknown }>(CONFORMING_QUERY);
+  // Anything but a plain "on" gets the stricter reading.
+  return result.rows[0]?.value !== 'on';
+}
+
 export const TIMEOUTS = ['set statement_timeout = 60000', 'set lock_timeout = 5000'];
 
 async function count(client: Queryable, sql: string): Promise<number> {
@@ -641,7 +907,7 @@ export async function rehearsal(
       err.code === '3F000'
         ? 'there is no migration ledger here, so nothing has ever been applied to this database by the ' +
           'migration tool. That is a database that has never been migrated, NOT a database that is behind.'
-        : `could not read the migration ledger: ${err.message}`;
+        : `could not read the migration ledger: ${literal(err.message ?? 'no message')}`;
     return [fail('ledger', hint)];
   }
 
@@ -662,7 +928,22 @@ export async function rehearsal(
     await client.query(`savepoint ${SAVEPOINT}`);
     for (const { file } of pending) {
       try {
-        await client.query(read(file));
+        const sql = read(file);
+        // Guard 2 again, for this session's reading of strings. The file has
+        // not run, so a refusal here costs nothing but the files before it,
+        // which the rollback below undoes.
+        if (await readsBackslashEscapes(client)) {
+          const hits = transactionControlFindings(
+            file,
+            transactionControl(sql, true),
+            ' when read with standard_conforming_strings off, as this session reads it',
+          );
+          if (hits.length > 0) {
+            findings.push(...hits);
+            break;
+          }
+        }
+        await client.query(sql);
         findings.push(appliedFinding(file));
       } catch (e) {
         // Stop at the first failure, as the migration tool does. Continuing

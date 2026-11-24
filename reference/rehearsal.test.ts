@@ -3,17 +3,23 @@ import { describe, expect, it } from 'vitest';
 import {
   LEDGER_QUERY,
   LOOPBACK_FLAG,
+  appliedFinding,
+  CONFORMING_QUERY,
   SAVEPOINT,
   SHAPE_QUERY,
   blameFor,
   envRefusal,
   failureFinding,
+  linkedComponent,
+  literal,
   loopbackOverride,
   migrationRefusals,
   preDialFindings,
   rehearsal,
+  render,
   projectRefFrom,
   transactionControl,
+  transactionControlFindings,
   targetFindings,
   unappliedFiles,
   worst,
@@ -147,6 +153,11 @@ describe('guard 2: transaction control in the SQL', () => {
   it('finds the statements that would end the transaction', () => {
     expect(transactionControl('create table t (id int);\ncommit;')).toEqual(['commit']);
     expect(transactionControl('rollback;\ncommit;')).toEqual(['rollback', 'commit']);
+    expect(transactionControl("create table t (id int);\nprepare transaction 'x';")).toEqual(['prepare transaction']);
+    expect(transactionControl('abort;')).toEqual(['abort']);
+    expect(transactionControl('end work;\nend transaction;')).toEqual(['end work', 'end transaction']);
+    // A prepared statement is not a prepared transaction.
+    expect(transactionControl('prepare get_t as select 1;')).toEqual([]);
   });
 
   it('does not refuse a header that merely discusses committing', () => {
@@ -165,6 +176,79 @@ describe('guard 2: transaction control in the SQL', () => {
   it('does not match a word that merely contains one', () => {
     expect(transactionControl('create table commits (id int);')).toEqual([]);
     expect(transactionControl('select rollback_at from t;')).toEqual([]);
+  });
+
+  // A comment marker opens a comment only where Postgres would read one. Each
+  // of these puts `/*` somewhere it is text, so Postgres runs the `commit`, and
+  // a stripper that took the marker at face value would hide it up to the `*/`.
+  it.each([
+    ['a single-quoted string', "select '/*';\ncommit;\nselect '*/';"],
+    ['a string with a doubled quote', "select 'it''s /*';\ncommit;\nselect '*/';"],
+    ['an E string with an escaped quote', "select E'\\' /* ';\ncommit;\n-- */"],
+    ['an E string continued on the next line', "select E''\n'\\' /* ';\ncommit;\n-- */"],
+    ['an E string continued past a line comment', "select E'' -- note\n'\\' /* ';\ncommit;\n-- */"],
+    ['a quoted identifier', 'select 1 as "/*";\ncommit;\nselect 1 as "*/";'],
+    ['a line comment', '-- note /*\ncommit;\n-- */'],
+    ['a dollar-quoted string', 'select $$ /* $$;\ncommit;\nselect $$ */ $$;'],
+    ['a tagged dollar-quoted string', 'select $t$ /* $t$;\ncommit;\nselect $t$ */ $t$;'],
+  ])('sees a commit after a comment marker inside %s', (_where, sql) => {
+    expect(transactionControl(sql)).toEqual(['commit']);
+  });
+
+  it('ends a line comment at a carriage return, as Postgres does', () => {
+    expect(transactionControl('-- x\rcommit;')).toEqual(['commit']);
+  });
+
+  it('reads a plain string the standard way, where a backslash is just a character', () => {
+    // Read as if backslashes escaped quotes, the '/*' and '*/' here would join a
+    // string and a comment and hide the commit between them.
+    expect(transactionControl("select 'x\\'; select '/*'; commit; select '*/';")).toEqual(['commit']);
+    // And an ordinary path idiom followed by a comment is not refused.
+    expect(transactionControl("update f set p = replace(p, '\\', '/');\n-- rollback is the tool's job\n")).toEqual([]);
+  });
+
+  it('reads a plain string with backslash escapes when asked to', () => {
+    // What Postgres does while standard_conforming_strings is off, which the
+    // rehearsal checks on the target before running each file.
+    expect(transactionControl("select '\\' /* ';\ncommit;\n-- */", true)).toEqual(['commit']);
+    expect(transactionControl("select '\\' /* ';\ncommit;\n-- */")).toEqual([]);
+  });
+
+  it('does not open a dollar quote straight after an identifier character', () => {
+    // `a$$` is an identifier. Read as an opening tag, it would swallow the
+    // comment's `*/` and expose the word inside it.
+    expect(transactionControl('create table t (a$$ int); /* $$ commit */ select 1;')).toEqual([]);
+  });
+
+  it('drops a comment between continued string segments, like any other comment', () => {
+    expect(transactionControl("select E'first'\n-- rollback plan\n'second';")).toEqual([]);
+  });
+
+  it('does not carry E-string escapes into a string that is not a continuation', () => {
+    // On the same line, the second string is a new ordinary one, where a backslash is a character.
+    expect(transactionControl("select E'' || '\\'; select '/*'; commit; select '*/';")).toEqual(['commit']);
+  });
+
+  it('reads block comments as nesting, the way Postgres does', () => {
+    expect(transactionControl('/* outer /* inner */ commit */ select 1;')).toEqual([]);
+  });
+
+  it('strips the comments inside a function body without letting them reach past it', () => {
+    expect(transactionControl('do $$ begin -- commit later\n perform 1; end $$;')).toEqual([]);
+    expect(transactionControl('do $$ begin /* commit */ perform 1; end $$;')).toEqual([]);
+    expect(transactionControl('do $$ begin perform 1; /* end $$;\ncommit;\n-- */')).toEqual(['commit']);
+  });
+
+  it('keeps the text of an unterminated comment, which can only over-refuse', () => {
+    expect(transactionControl('select 1; /* commit')).toEqual(['commit']);
+  });
+
+  it('reads a file full of unterminated comment openers in linear time', () => {
+    // 300 KB of `/* ` with no `*/`. A lazy `/\*[\s\S]*?\*\/` rescans to the end
+    // from every opener, which takes seconds here and minutes at a few MB.
+    const started = performance.now();
+    transactionControl('/* '.repeat(100_000));
+    expect(performance.now() - started).toBeLessThan(500);
   });
 
   it('refuses to report a rehearsal that read no files at all', () => {
@@ -316,11 +400,29 @@ describe('the transaction', () => {
     expect(messages(findings)).toMatch(/never been migrated/);
   });
 
+  it('checks each file again, before running it, when the session reads backslashes as escapes', async () => {
+    // A file that passed guard 2 read the standard way. With
+    // standard_conforming_strings off, Postgres reads the same text differently,
+    // and the commit hidden behind the quote is real.
+    const hidden = "select '\\' /* ';\ncommit;\n-- */";
+    const files = ['2_hidden.sql'];
+    const off = world((sql) => (sql === CONFORMING_QUERY ? [{ value: 'off' }] : undefined));
+    const refused = await rehearsal(off.client, files, () => hidden);
+    expect(messages(refused)).toMatch(/transaction control/);
+    expect(messages(refused)).toMatch(/standard_conforming_strings/);
+    expect(off.queries).not.toContain(hidden);
+    expect(off.queries).toContain('rollback');
+
+    const on = world((sql) => (sql === CONFORMING_QUERY ? [{ value: 'on' }] : undefined));
+    await rehearsal(on.client, files, () => hidden);
+    expect(on.queries).toContain(hidden);
+  });
+
   it('says out loud when the target is ahead of the branch', async () => {
     const { client } = world((sql) => (sql === LEDGER_QUERY ? [{ version: '1' }, { version: '9' }] : undefined));
     const findings = await rehearsal(client, ['1_a.sql', '2_b.sql'], read);
 
-    expect(messages(findings)).toMatch(/1 version\(s\) this branch does not: 9/);
+    expect(messages(findings)).toMatch(/1 version\(s\) this branch does not: `9`/);
     // Ordinary, so it must not block the pull request.
     expect(worst(findings)).toBe('warn');
   });
@@ -330,5 +432,85 @@ describe('the transaction', () => {
     await rehearsal(client, ['1_a.sql'], read);
 
     expect(queries.slice(0, 2)).toEqual(['set statement_timeout = 60000', 'set lock_timeout = 5000']);
+  });
+});
+
+describe('the report, as text from outside the tool reaches it', () => {
+  // Removes each code span: a run of backticks, up to the next run of the same length.
+  const outsideCodeSpans = (s: string) => s.replace(/(`+)[\s\S]*?(?<!`)\1(?!`)/g, '');
+
+  // A migration's filename and a database error are written by whoever opened
+  // the pull request, and the report goes to a job log, where a line starting
+  // `::` is a workflow command, and to a markdown job summary.
+  const hostile = '2_a.sql\n::warning title=forged::all clear\n### Migration rehearsal: OK ![x](https://example.com/p.png)';
+
+  it('keeps a hostile filename on one line, so it cannot forge a log command or a heading', () => {
+    const report = render(transactionControlFindings(hostile, ['commit']));
+    for (const line of report.split('\n')) {
+      expect(line).not.toMatch(/^::/);
+      expect(line).not.toMatch(/^### Migration rehearsal: OK/);
+    }
+  });
+
+  it('flattens a finding that reaches render with a line break in it', () => {
+    const report = render([{ check: 'x', level: 'fail', message: 'a\n::warning::b' }]);
+    for (const line of report.split('\n')) expect(line).not.toMatch(/^::/);
+  });
+
+  it('prints outside text as a code span, where markdown is inert', () => {
+    expect(literal('a ![x](https://example.com/p.png) b')).toBe('`a ![x](https://example.com/p.png) b`');
+    // A backtick inside cannot close the span: the fence is longer than any run in it.
+    expect(literal('a `b` c')).toBe('``a `b` c``');
+    expect(literal('`x`')).toBe('`` `x` ``');
+  });
+
+  it('applies to every place a filename or database text is reported', () => {
+    const findings = [
+      ...transactionControlFindings(hostile, ['commit']),
+      ...migrationRefusals(['1_a.sql', hostile.replace('2_a', 'note')], () => '', 'migrations'),
+      failureFinding(hostile, sqlError('23502', 'bad ![x](https://example.com/p.png)\nsecond line')),
+      appliedFinding(hostile),
+    ];
+    for (const f of findings) {
+      expect(`${f.check} ${f.message}`).not.toMatch(/[\n\r]/);
+      expect(outsideCodeSpans(`${f.check} ${f.message}`)).not.toMatch(/!\[x\]/);
+    }
+  });
+});
+
+describe('what counts as a migration file', () => {
+  it('refuses a file that is not a regular file, without reading anything', () => {
+    // A pull request can commit a symlink, and the step that reads migrations
+    // holds the database credential. Following it would send any file the
+    // runner can read to the database as SQL, and into the report on failure.
+    const read = (file: string): string => {
+      throw new Error(`read ${file}`);
+    };
+    const findings = migrationRefusals(['1_a.sql', '2_link.sql'], read, 'migrations', (f) => f !== '2_link.sql');
+    expect(worst(findings)).toBe('fail');
+    expect(findings.map((f) => f.message).join(' ')).toMatch(/2_link\.sql.*not a regular file/);
+  });
+
+  it('strips characters that reorder or hide text in the report', () => {
+    const rlo = String.fromCharCode(0x202e);
+    const zwsp = String.fromCharCode(0x200b);
+    expect(literal(`1_a${rlo}lqs.exe${zwsp}.sql`)).toBe('`1_a?lqs.exe?.sql`');
+  });
+});
+
+describe('the migrations directory', () => {
+  // The path comes from the workflow, but the directories along it come from
+  // the pull request's tree, and any of them can be a committed symlink.
+  const links = new Set(['/w/pr/supabase']);
+  const isLink = (p: string) => links.has(p);
+
+  it('names the first component along the given path that is a symlink', () => {
+    expect(linkedComponent('/w/trusted', '../pr/supabase/migrations', isLink)).toBe('/w/pr/supabase');
+  });
+
+  it('accepts a path with no link in it, and does not look above where it starts', () => {
+    expect(linkedComponent('/w/trusted', '../pr/db/migrations', isLink)).toBeNull();
+    // The working directory's own ancestry belongs to the runner, not the pull request.
+    expect(linkedComponent('/w/pr/supabase', 'migrations', isLink)).toBeNull();
   });
 });

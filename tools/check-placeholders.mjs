@@ -10,6 +10,10 @@
 //      undocumented placeholder is a value someone has to reverse-engineer.
 //   3. Every placeholder documented in the README is actually used. A stale row
 //      sends people looking for something that is not there.
+//   4. Every action in a reference workflow is pinned to a full commit SHA, and
+//      to the same one this repository's own workflows run. Dependabot bumps the
+//      pins under .github/workflows and cannot see reference/, so without this
+//      the copies people adopt fall behind the ones that are tested.
 //
 // It also refuses to pass on a workflow with no placeholders at all, because
 // that is what a half-finished substitution looks like, and because every check
@@ -78,6 +82,56 @@ if (unused.length > 0) {
   );
 }
 
+// Every `uses:` in a workflow, read from the parsed YAML so the step's layout
+// (block or flow mapping, quoted or not) cannot hide one. Job-level `uses:`
+// (a reusable workflow) counts too.
+function pinsIn(text) {
+  const doc = parse(text);
+  const pins = [];
+  for (const job of Object.values(doc?.jobs ?? {})) {
+    const uses = [job?.uses, ...(job?.steps ?? []).map((step) => step?.uses)];
+    for (const value of uses) {
+      if (typeof value !== 'string') continue;
+      const at = value.lastIndexOf('@');
+      pins.push(at < 0 ? { action: value, ref: '' } : { action: value.slice(0, at), ref: value.slice(at + 1) });
+    }
+  }
+  return pins;
+}
+
+// Every pin this repository's own workflows run, per action. Two different
+// pins for one action is a disagreement to fix, not a choice for whichever
+// file happens to be read last.
+const tested = new Map();
+for (const file of fs.readdirSync(path.join(ROOT, '.github/workflows')).sort()) {
+  for (const { action, ref } of pinsIn(read(path.join('.github/workflows', file)))) {
+    if (!tested.has(action)) tested.set(action, new Set());
+    tested.get(action).add(ref);
+  }
+}
+for (const [action, refs] of tested) {
+  if (refs.size > 1) {
+    problems.push(`.github/workflows pins ${action} to ${[...refs].sort().join(' and ')}. Pick one.`);
+  }
+}
+
+let pinned = 0;
+for (const file of WORKFLOWS) {
+  for (const { action, ref } of pinsIn(read(file))) {
+    pinned++;
+    const refs = tested.get(action);
+    if (!/^[0-9a-f]{40}$/.test(ref)) {
+      problems.push(`${file}: ${action}@${ref} is not pinned to a full commit SHA.`);
+    } else if (!refs || refs.size !== 1 || !refs.has(ref)) {
+      problems.push(
+        `${file}: ${action}@${ref} differs from what this repository's own workflows run ` +
+          `(${refs ? [...refs].join(', ') : 'nothing'}). Copy the pin across, so what people adopt is what CI tested.`,
+      );
+    }
+  }
+}
+if (pinned === 0) problems.push('found no `uses:` in the reference workflows: this check is reading the wrong files.');
+
 if (problems.length > 0) {
   console.error('Placeholder check FAILED:\n');
   for (const p of problems) console.error(`  - ${p}`);
@@ -87,5 +141,5 @@ if (problems.length > 0) {
 
 console.log(
   `Placeholder check ok: ${WORKFLOWS.length} workflows parse, ` +
-    `${used.size} placeholders, all documented (${list(used)}).`,
+    `${used.size} placeholders, all documented (${list(used)}), ${pinned} action pins match.`,
 );

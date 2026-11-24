@@ -6,6 +6,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+
+- Guard 2 reads comments the way Postgres does, so a `/*` inside a string or
+  after `--` can no longer hide a `commit`. It also refuses `abort`,
+  `end work`, `end transaction` and `prepare transaction`, and rereads a file
+  before it runs when the session has `standard_conforming_strings` off.
+- A migration that is a symlink, or sits in a linked directory, is refused.
+- Filenames and database messages can no longer forge lines in the job log or
+  summary.
+- The reference gate runs its code from the base commit, not the pull request.
+- Every action is pinned to a commit SHA, and CI fails if the reference
+  workflows' pins drift.
+
 ### Fixed
 
 - A migrations directory in which no filename carries a version is refused,
