@@ -78,9 +78,9 @@ that is rolled back before the connection closes.
 
 ```
 begin;
-savepoint rehearsal_root;
+savepoint migration_rehearsal_root;
   <each migration the target has not applied yet>
-rollback to savepoint rehearsal_root;
+rollback to savepoint migration_rehearsal_root;
 rollback;
 ```
 
