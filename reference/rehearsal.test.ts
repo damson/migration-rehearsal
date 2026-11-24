@@ -3,17 +3,21 @@ import { describe, expect, it } from 'vitest';
 import {
   LEDGER_QUERY,
   LOOPBACK_FLAG,
+  appliedFinding,
   SAVEPOINT,
   SHAPE_QUERY,
   blameFor,
   envRefusal,
   failureFinding,
+  literal,
   loopbackOverride,
   migrationRefusals,
   preDialFindings,
   rehearsal,
+  render,
   projectRefFrom,
   transactionControl,
+  transactionControlFindings,
   targetFindings,
   unappliedFiles,
   worst,
@@ -361,7 +365,7 @@ describe('the transaction', () => {
     const { client } = world((sql) => (sql === LEDGER_QUERY ? [{ version: '1' }, { version: '9' }] : undefined));
     const findings = await rehearsal(client, ['1_a.sql', '2_b.sql'], read);
 
-    expect(messages(findings)).toMatch(/1 version\(s\) this branch does not: 9/);
+    expect(messages(findings)).toMatch(/1 version\(s\) this branch does not: `9`/);
     // Ordinary, so it must not block the pull request.
     expect(worst(findings)).toBe('warn');
   });
@@ -371,5 +375,43 @@ describe('the transaction', () => {
     await rehearsal(client, ['1_a.sql'], read);
 
     expect(queries.slice(0, 2)).toEqual(['set statement_timeout = 60000', 'set lock_timeout = 5000']);
+  });
+});
+
+describe('the report, as text from outside the tool reaches it', () => {
+  // Removes each code span: a run of backticks, up to the next run of the same length.
+  const outsideCodeSpans = (s: string) => s.replace(/(`+)[\s\S]*?(?<!`)\1(?!`)/g, '');
+
+  // A migration's filename and a database error are written by whoever opened
+  // the pull request, and the report goes to a job log, where a line starting
+  // `::` is a workflow command, and to a markdown job summary.
+  const hostile = '2_a.sql\n::warning title=forged::all clear\n### Migration rehearsal: OK ![x](https://example.com/p.png)';
+
+  it('keeps a hostile filename on one line, so it cannot forge a log command or a heading', () => {
+    const report = render(transactionControlFindings(hostile, ['commit']));
+    for (const line of report.split('\n')) {
+      expect(line).not.toMatch(/^::/);
+      expect(line).not.toMatch(/^### Migration rehearsal: OK/);
+    }
+  });
+
+  it('prints outside text as a code span, where markdown is inert', () => {
+    expect(literal('a ![x](https://example.com/p.png) b')).toBe('`a ![x](https://example.com/p.png) b`');
+    // A backtick inside cannot close the span: the fence is longer than any run in it.
+    expect(literal('a `b` c')).toBe('``a `b` c``');
+    expect(literal('`x`')).toBe('`` `x` ``');
+  });
+
+  it('applies to every place a filename or database text is reported', () => {
+    const findings = [
+      ...transactionControlFindings(hostile, ['commit']),
+      ...migrationRefusals(['1_a.sql', hostile.replace('2_a', 'note')], () => '', 'migrations'),
+      failureFinding(hostile, sqlError('23502', 'bad ![x](https://example.com/p.png)\nsecond line')),
+      appliedFinding(hostile),
+    ];
+    for (const f of findings) {
+      expect(`${f.check} ${f.message}`).not.toMatch(/[\n\r]/);
+      expect(outsideCodeSpans(`${f.check} ${f.message}`)).not.toMatch(/!\[x\]/);
+    }
   });
 });

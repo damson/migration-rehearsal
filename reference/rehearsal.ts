@@ -101,10 +101,39 @@ export function exitCode(findings: readonly Finding[]): number {
 
 const MARK: Record<Level, string> = { ok: 'ok  ', warn: 'WARN', fail: 'FAIL' };
 
-/** The report, as markdown a job summary can swallow whole. */
+/**
+ * The report, as markdown a job summary can swallow whole.
+ *
+ * One line per finding, whatever the finding holds. The report also goes to the
+ * job log, where a line starting `::` is a workflow command, so a line break
+ * that reaches here is flattened rather than trusted.
+ */
 export function render(findings: readonly Finding[]): string {
-  const lines = findings.map((f) => `- \`${MARK[f.level]}\` **${f.check}**: ${f.message}`);
+  const lines = findings.map((f) => oneLine(`- \`${MARK[f.level]}\` **${f.check}**: ${f.message}`));
   return [`### Migration rehearsal: ${worst(findings).toUpperCase()}`, '', ...lines, ''].join('\n');
+}
+
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+
+function oneLine(text: string): string {
+  return text.replace(CONTROL, '?');
+}
+
+/**
+ * Text the tool did not write (a filename, a database message, a ledger
+ * version), made safe to print. A pull request chooses all three, and the
+ * report is read as markdown and as a log.
+ *
+ * The result is one line, and a code span, inside which markdown is inert. Its
+ * fence is one backtick longer than the longest run inside, so no backtick in
+ * the text can close it early.
+ */
+export function literal(text: string): string {
+  const flat = oneLine(text);
+  const longest = Math.max(0, ...(flat.match(/`+/g) ?? []).map((run) => run.length));
+  const fence = '`'.repeat(longest + 1);
+  const pad = flat.startsWith('`') || flat.endsWith('`') ? ' ' : '';
+  return `${fence}${pad}${flat}${pad}${fence}`;
 }
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -406,7 +435,7 @@ export function transactionControlFindings(file: string, hits: readonly string[]
   const unique = [...new Set(hits)].join(', ');
   return [
     fail(
-      `transaction control ${file}`,
+      `transaction control ${literal(file)}`,
       `contains ${unique}, which would end the rehearsal's transaction and let this migration's writes ` +
         'survive against a live database. A migration never manages its own transaction here: the ' +
         'migration tool wraps each file, and so does the rehearsal. Remove the statement.',
@@ -458,7 +487,7 @@ export function migrationRefusals(
       warn(
         'migrations',
         `${unversioned.length} of ${files.length} .sql file(s) in ${dir} carry no version and were not ` +
-          `rehearsed: ${unversioned.join(', ')}.`,
+          `rehearsed: ${unversioned.map(literal).join(', ')}.`,
       ),
     );
   }
@@ -586,14 +615,14 @@ export function normaliseError(e: unknown): SqlError {
 export function failureFinding(file: string, err: SqlError): Finding {
   const blame = blameFor(err.code);
   const code = err.code ? ` [${err.code}]` : '';
-  const message = (err.message ?? 'no message').split('\n')[0];
+  const message = (err.message ?? 'no message').split('\n')[0] ?? '';
   return {
-    check: `rehearsal ${file}`,
+    check: `rehearsal ${literal(file)}`,
     // A rehearsal-limit failure is information. Blocking a pull request because the
     // rehearsal cannot express the statement would make the gate the thing to route
     // around, which is how a required check stops being read.
     level: blame === 'rehearsal-limit' ? 'warn' : 'fail',
-    message: `${message}${code}. ${blameNote(blame)}`,
+    message: `${literal(message)}${code}. ${blameNote(blame)}`,
   };
 }
 
@@ -639,7 +668,7 @@ export function nothingToRehearse(applied: number): Finding {
 }
 
 export function appliedFinding(file: string): Finding {
-  return ok(`rehearsal ${file}`, 'applied inside the transaction');
+  return ok(`rehearsal ${literal(file)}`, 'applied inside the transaction');
 }
 
 export function rolledBackFinding(count: number): Finding {
@@ -659,7 +688,7 @@ export function rolledBackFinding(count: number): Finding {
 export function escapedFinding(detail: string): Finding {
   return fail(
     'rollback',
-    `THE REHEARSAL'S SAVEPOINT WAS DESTROYED (${detail}), which happens when a statement committed. ` +
+    `THE REHEARSAL'S SAVEPOINT WAS DESTROYED (${literal(detail)}), which happens when a statement committed. ` +
       'Assume the target database was modified and check it by hand before merging anything: the ' +
       'rollback that makes this rehearsal safe did not happen.',
   );
@@ -697,7 +726,7 @@ export function strayFinding(stray: readonly string[]): Finding[] {
   return [
     warn(
       'ledger ahead',
-      `the target has ${stray.length} version(s) this branch does not: ${stray.join(', ')}. ` +
+      `the target has ${stray.length} version(s) this branch does not: ${stray.map(literal).join(', ')}. ` +
         'Ordinary when the branch predates a merge; rebase if the rehearsal result looks unrelated to your change.',
     ),
   ];
@@ -765,7 +794,7 @@ export async function rehearsal(
       err.code === '3F000'
         ? 'there is no migration ledger here, so nothing has ever been applied to this database by the ' +
           'migration tool. That is a database that has never been migrated, NOT a database that is behind.'
-        : `could not read the migration ledger: ${err.message}`;
+        : `could not read the migration ledger: ${literal(err.message ?? 'no message')}`;
     return [fail('ledger', hint)];
   }
 

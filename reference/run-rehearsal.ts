@@ -37,6 +37,7 @@ import {
   exitCode,
   fail,
   isLoopback,
+  literal,
   loopbackOverride,
   normaliseError,
   ok,
@@ -105,13 +106,13 @@ async function main(): Promise<number> {
   try {
     await client.connect();
   } catch (e) {
-    console.log(render([...refusals, fail('connect', normaliseError(e).message ?? 'could not connect')]));
+    console.log(render([...refusals, fail('connect', literal(normaliseError(e).message ?? 'could not connect'))]));
     return 1;
   }
   try {
     findings = [...refusals, ...(await rehearsal(client, files, readMigration))];
   } catch (e) {
-    findings = [...refusals, fail('rehearsal', normaliseError(e).message ?? 'the rehearsal threw')];
+    findings = [...refusals, fail('rehearsal', literal(normaliseError(e).message ?? 'the rehearsal threw'))];
   } finally {
     await client.end().catch(() => {});
   }

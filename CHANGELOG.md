@@ -20,6 +20,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cost is linear: a few megabytes of unterminated `/*`
   could previously hold the job until its timeout. The self-test watches the
   quoted case refuse.
+- A filename, a database message or a ledger version reaches the report as a
+  one-line code span. A migration named with a line break could otherwise
+  write a `::warning::` workflow command or a forged heading into the job log
+  and the job summary, and markdown in any of the three rendered there.
 
 ### Fixed
 
