@@ -19,7 +19,8 @@ with nothing kept. On each pull request that changes a migration, it:
 3. proves the rollback happened,
 4. and blocks the pull request if the real rows break a migration.
 
-Nothing is committed. Most of the code here exists to prove that. It needs no new
+Nothing is committed, and most of the code here exists to prove that, or to say
+loudly when a migration got a commit through. It needs no new
 infrastructure: a staging database you already have, and about a minute of CI.
 
 **[Read the article](docs/rehearsing-migrations-against-real-rows.md)** for the
@@ -73,7 +74,8 @@ against real rows, then be undone without being saved.
 
 The savepoint is a marker inside the transaction. If a migration sneaks in a
 `COMMIT`, the marker disappears, the rollback to it fails, and the run raises an
-alarm.
+alarm. The alarm cannot undo that commit: whatever it wrote stays on the target,
+and has to be cleaned up by hand.
 
 ## Adopt it in five steps
 
@@ -194,8 +196,9 @@ REHEARSAL_MIGRATIONS_DIR=path/to/migrations \
   npm run rehearse
 ```
 
-It commits nothing. Guards 3 and 4 exist to prove that, and the self-test checks
-it by asking the database.
+It commits nothing, unless a migration gets a commit past guard 2, which guard 3
+reports. Guards 3 and 4 exist to prove that, and the self-test checks it by asking
+the database.
 
 ## FAQ
 
