@@ -389,7 +389,11 @@ function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: 
 
 /**
  * Statements that would END the rehearsal's transaction and let a migration's
- * writes survive. Two of them, and the two that are absent matter as much.
+ * writes survive. Three of them, and the ones that are absent matter as much.
+ *
+ * `prepare transaction` is here because it detaches the open transaction for a
+ * two-phase commit and leaves the session outside any transaction, so every
+ * statement after it commits on its own.
  *
  * `begin` and `start transaction` are NOT here. Banning them is the obvious
  * first draft and it is wrong twice over. Wrong in fact: inside an open
@@ -400,9 +404,10 @@ function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: 
  *
  * `end` is absent for a different reason, and that absence is why guard 3
  * exists. Bare `end;` DOES commit, but `end if`, `end loop` and `end $$` close
- * plpgsql blocks, and no text pattern separates them. A savepoint can.
+ * plpgsql blocks, and no text pattern separates them. A savepoint can, but only
+ * after the fact: guard 3 reports that commit once it has happened.
  */
-export const TRANSACTION_CONTROL = ['commit', 'rollback'] as const;
+export const TRANSACTION_CONTROL = ['commit', 'rollback', 'prepare transaction'] as const;
 
 /**
  * Which of them the file contains, in the order they appear.

@@ -30,9 +30,11 @@ name: Rehearse migrations
 # this job they surface on the merge commit, after the pull request is closed.
 #
 # WHY IT IS SAFE. run-rehearsal.ts refuses a target that is not the expected project
-# before dialling, refuses any migration carrying transaction control before
-# dialling, proves the rollback happened with a savepoint, and measures the
-# target's object count either side. The guards are unit-tested, and the
+# before dialling, refuses any migration containing `commit`, `rollback` or
+# `prepare transaction` before dialling, proves the rollback happened with a
+# savepoint, and measures the target's object count either side. A bare `end;`
+# also commits; guard 2 cannot tell it from the `end` closing a block, so the
+# savepoint catches it, after the write. The guards are unit-tested, and the
 # companion workflow rehearsal-selftest.yml exercises them end to end against a
 # throwaway Postgres.
 #

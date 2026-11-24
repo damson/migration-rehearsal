@@ -151,6 +151,9 @@ describe('guard 2: transaction control in the SQL', () => {
   it('finds the statements that would end the transaction', () => {
     expect(transactionControl('create table t (id int);\ncommit;')).toEqual(['commit']);
     expect(transactionControl('rollback;\ncommit;')).toEqual(['rollback', 'commit']);
+    expect(transactionControl("create table t (id int);\nprepare transaction 'x';")).toEqual(['prepare transaction']);
+    // A prepared statement is not a prepared transaction.
+    expect(transactionControl('prepare get_t as select 1;')).toEqual([]);
   });
 
   it('does not refuse a header that merely discusses committing', () => {

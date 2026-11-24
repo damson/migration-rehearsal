@@ -14,9 +14,12 @@
 //   1. It refuses a target that is not the expected project, before dialling.
 //      Production is never a rehearsal target, and the refusal is the only guard
 //      there is: once a log line names the database reached, it has been.
-//   2. It refuses any migration carrying transaction control, before dialling.
-//   3. It opens a savepoint and rolls back TO it, so a COMMIT that slipped past
-//      guard 2 makes that statement fail loudly instead of passing silently.
+//   2. It refuses any migration containing `commit`, `rollback` or `prepare
+//      transaction`, before dialling. A bare `end;` also commits, and guard 2
+//      cannot tell it from the `end` that closes a block, so it is not refused.
+//   3. It opens a savepoint and rolls back TO it, so a commit guard 2 missed
+//      fails the run loudly instead of passing silently. That write has
+//      already happened by then, which is why guard 2 comes first.
 //   4. It counts the target's public objects before and after, so the rollback
 //      is measured rather than trusted.
 //

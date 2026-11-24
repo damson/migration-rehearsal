@@ -124,7 +124,9 @@ out of a CI log reaches a real database with its only target guard switched off.
 
 A `COMMIT` inside a migration ends the rehearsal's transaction, and everything after
 it is written for real. So migration files are scanned before anything is
-dialled, and a file containing `commit` or `rollback` is refused.
+dialled, and a file containing `commit`, `rollback` or `prepare transaction` is
+refused. The last detaches the transaction for a two-phase commit, so every
+statement after it commits on its own.
 
 The text scan is deliberately literal: comments are stripped, so a header
 explaining that a migration does not commit is not itself a refusal, but string
