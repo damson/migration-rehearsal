@@ -371,6 +371,30 @@ function isEStringPrefix(sql: string, quote: number): boolean {
   return (prefix === 'E' || prefix === 'e') && !(quote > 1 && IDENT_CHAR.test(sql.charAt(quote - 2)));
 }
 
+/**
+ * Where a string literal continues after its closing quote: the index of the
+ * next opening quote, or -1. Postgres allows spaces, tabs and `--` comments
+ * between the two, and requires at least one newline among them.
+ */
+function continuationAt(sql: string, from: number): number {
+  let k = from;
+  let newline = false;
+  while (k < sql.length) {
+    const ch = sql.charAt(k);
+    if (ch === '\n' || ch === '\r') {
+      newline = true;
+      k++;
+    } else if (ch === ' ' || ch === '\t' || ch === '\f' || ch === '\v') {
+      k++;
+    } else if (ch === '-' && sql.charAt(k + 1) === '-') {
+      while (k < sql.length && sql.charAt(k) !== '\n' && sql.charAt(k) !== '\r') k++;
+    } else {
+      break;
+    }
+  }
+  return newline && sql.charAt(k) === "'" ? k : -1;
+}
+
 /** The index just past the quote that closes the one at `start`, or the end of the SQL. */
 function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: boolean): number {
   let j = start + 1;
@@ -378,8 +402,16 @@ function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: 
     if (backslashEscapes && sql[j] === '\\') {
       j += 2;
     } else if (sql[j] === quote) {
-      if (sql[j + 1] !== quote) return j + 1;
-      j += 2;
+      if (sql[j + 1] === quote) {
+        j += 2;
+        continue;
+      }
+      // Two string literals separated only by whitespace that holds a newline
+      // are one string to Postgres, and the second keeps the first's escape
+      // mode. So `E''` on one line and `'\' /* '` on the next are one E-string.
+      const next = quote === "'" ? continuationAt(sql, j + 1) : -1;
+      if (next === -1) return j + 1;
+      j = next + 1;
     } else {
       j++;
     }

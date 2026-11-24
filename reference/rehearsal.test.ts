@@ -185,6 +185,8 @@ describe('guard 2: transaction control in the SQL', () => {
     ['a single-quoted string', "select '/*';\ncommit;\nselect '*/';"],
     ['a string with a doubled quote', "select 'it''s /*';\ncommit;\nselect '*/';"],
     ['an E string with an escaped quote', "select E'\\' /* ';\ncommit;\n-- */"],
+    ['an E string continued on the next line', "select E''\n'\\' /* ';\ncommit;\n-- */"],
+    ['an E string continued past a line comment', "select E'' -- note\n'\\' /* ';\ncommit;\n-- */"],
     ['a quoted identifier', 'select 1 as "/*";\ncommit;\nselect 1 as "*/";'],
     ['a line comment', '-- note /*\ncommit;\n-- */'],
     ['a dollar-quoted string', 'select $$ /* $$;\ncommit;\nselect $$ */ $$;'],
@@ -216,6 +218,11 @@ describe('guard 2: transaction control in the SQL', () => {
     // `a$$` is an identifier. Read as an opening tag, it would swallow the
     // comment's `*/` and expose the word inside it.
     expect(transactionControl('create table t (a$$ int); /* $$ commit */ select 1;')).toEqual([]);
+  });
+
+  it('does not carry E-string escapes into a string that is not a continuation', () => {
+    // On the same line, the second string is a new ordinary one, where a backslash is a character.
+    expect(transactionControl("select E'' || '\\'; select '/*'; commit; select '*/';")).toEqual(['commit']);
   });
 
   it('reads block comments as nesting, the way Postgres does', () => {

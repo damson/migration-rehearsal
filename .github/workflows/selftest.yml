@@ -308,6 +308,34 @@ jobs:
           fi
           echo "Refused before the file ran. OK"
 
+      # An E-string continued on the next line keeps its backslash escapes, so
+      # the `/*` below is string content and Postgres runs the `commit`.
+      - name: Must see a commit behind a continued E-string
+        run: |
+          set -euo pipefail
+          trap 'rm -f examples/migrations/2099*.sql' EXIT
+          cat > examples/migrations/2099010100000380_rehearsal_continued.sql <<'SQL'
+          select E''
+          '\' /* ';
+          commit;
+          -- */
+          SQL
+          set +e
+          npx tsx reference/run-rehearsal.ts --allow-loopback-target > continued.log 2>&1
+          code=$?
+          set -e
+          cat continued.log
+          if [ $code -eq 0 ]; then
+            echo '::error::A commit behind a continued E-string was accepted.'
+            exit 1
+          fi
+          if ! grep -q 'transaction control' continued.log; then
+            echo '::error::Refused, but not by guard 2. The commit was not seen.'
+            exit 1
+          fi
+          grep -q 'not run: the target or the migrations were refused' continued.log
+          echo "Saw the continued string's commit and refused before dialling. OK"
+
       # The guard the text check CANNOT provide. Bare `end;` commits, and
       # banning the word `end` would reject every `end if` in every guarded
       # migration, so this is the case that proves the savepoint is load-bearing
