@@ -277,6 +277,40 @@ jobs:
           grep -q 'not run: the target or the migrations were refused' link.log
           echo "Refused the link before reading it. OK"
 
+      # Read the standard way, the second file is a string and a comment. After
+      # the first file turns standard_conforming_strings off, Postgres reads the
+      # backslash as escaping the quote, and the `commit` is a statement. Guard 2
+      # has to ask the session before running each file, not only read the text.
+      - name: Must refuse a commit that only a session reading backslashes can see
+        run: |
+          set -euo pipefail
+          trap 'rm -f <MIGRATIONS_DIR>/2099*.sql' EXIT
+          echo 'set standard_conforming_strings = off;' \
+            > <MIGRATIONS_DIR>/2099010100000370_rehearsal_scs_off.sql
+          cat > <MIGRATIONS_DIR>/2099010100000371_rehearsal_scs_hidden.sql <<'SQL'
+          select '\' /* ';
+          commit;
+          -- */
+          SQL
+          set +e
+          npx tsx <REHEARSAL_DIR>/run-rehearsal.ts --allow-loopback-target > scs.log 2>&1
+          code=$?
+          set -e
+          cat scs.log
+          if [ $code -eq 0 ]; then
+            echo '::error::A commit visible only with standard_conforming_strings off was accepted.'
+            exit 1
+          fi
+          if ! grep -q 'when read with standard_conforming_strings off' scs.log; then
+            echo '::error::Refused, but not by the session check. It was not seen before running.'
+            exit 1
+          fi
+          if grep -q 'SAVEPOINT WAS DESTROYED' scs.log; then
+            echo '::error::The commit ran before it was refused.'
+            exit 1
+          fi
+          echo "Refused before the file ran. OK"
+
       # The guard the text check CANNOT provide. Bare `end;` commits, and
       # banning the word `end` would reject every `end if` in every guarded
       # migration, so this is the case that proves the savepoint is load-bearing

@@ -425,13 +425,8 @@ export const TRANSACTION_CONTROL = [
  * prose that trips this, and over-refusing costs a rewrite, while under-refusing
  * costs a write to a live database that nothing rolls back.
  */
-export function transactionControl(sql: string): string[] {
-  // Read both ways a plain string can end. A migration can turn
-  // `standard_conforming_strings` off for its own session, and a target can run
-  // with it off, so which reading Postgres uses is not known here. Refusing
-  // when either reading finds a statement costs, at worst, a rewrite.
-  const standard = hitsIn(stripComments(sql));
-  return standard.length > 0 ? standard : hitsIn(stripComments(sql, true));
+export function transactionControl(sql: string, backslashQuotes = false): string[] {
+  return hitsIn(stripComments(sql, backslashQuotes));
 }
 
 function hitsIn(stripped: string): string[] {
@@ -444,13 +439,13 @@ function hitsIn(stripped: string): string[] {
   return hits.sort((a, b) => a.at - b.at).map((h) => h.word);
 }
 
-export function transactionControlFindings(file: string, hits: readonly string[]): Finding[] {
+export function transactionControlFindings(file: string, hits: readonly string[], reading = ''): Finding[] {
   if (hits.length === 0) return [];
   const unique = [...new Set(hits)].join(', ');
   return [
     fail(
       `transaction control ${literal(file)}`,
-      `contains ${unique}, which would end the rehearsal's transaction and let this migration's writes ` +
+      `contains ${unique}${reading}, which would end the rehearsal's transaction and let this migration's writes ` +
         'survive against a live database. A migration never manages its own transaction here: the ' +
         'migration tool wraps each file, and so does the rehearsal. Remove the statement.',
     ),
@@ -807,6 +802,22 @@ export const SHAPE_QUERY =
  * five seconds is one for a maintenance window, not one to hold the environment
  * open for.
  */
+/**
+ * How this session reads a plain string. Before dialling, guard 2 reads files
+ * the standard way. Postgres reads them with backslash escapes while this is
+ * off, which an earlier migration in the same run can do with `set`, and a
+ * target can be configured to do. A `set` does not change how its own file is
+ * read, because Postgres lexes a file before running any of it, so asking
+ * before each file is enough.
+ */
+export const CONFORMING_QUERY = "select current_setting('standard_conforming_strings') as value";
+
+async function readsBackslashEscapes(client: Queryable): Promise<boolean> {
+  const result = await client.query<{ value?: unknown }>(CONFORMING_QUERY);
+  // Anything but a plain "on" gets the stricter reading.
+  return result.rows[0]?.value !== 'on';
+}
+
 export const TIMEOUTS = ['set statement_timeout = 60000', 'set lock_timeout = 5000'];
 
 async function count(client: Queryable, sql: string): Promise<number> {
@@ -868,7 +879,22 @@ export async function rehearsal(
     await client.query(`savepoint ${SAVEPOINT}`);
     for (const { file } of pending) {
       try {
-        await client.query(read(file));
+        const sql = read(file);
+        // Guard 2 again, for this session's reading of strings. The file has
+        // not run, so a refusal here costs nothing but the files before it,
+        // which the rollback below undoes.
+        if (await readsBackslashEscapes(client)) {
+          const hits = transactionControlFindings(
+            file,
+            transactionControl(sql, true),
+            ' when read with standard_conforming_strings off, as this session reads it',
+          );
+          if (hits.length > 0) {
+            findings.push(...hits);
+            break;
+          }
+        }
+        await client.query(sql);
         findings.push(appliedFinding(file));
       } catch (e) {
         // Stop at the first failure, as the migration tool does. Continuing

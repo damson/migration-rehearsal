@@ -4,6 +4,7 @@ import {
   LEDGER_QUERY,
   LOOPBACK_FLAG,
   appliedFinding,
+  CONFORMING_QUERY,
   SAVEPOINT,
   SHAPE_QUERY,
   blameFor,
@@ -184,16 +185,37 @@ describe('guard 2: transaction control in the SQL', () => {
     ['a single-quoted string', "select '/*';\ncommit;\nselect '*/';"],
     ['a string with a doubled quote', "select 'it''s /*';\ncommit;\nselect '*/';"],
     ['an E string with an escaped quote', "select E'\\' /* ';\ncommit;\n-- */"],
-    [
-      'a plain string read with standard_conforming_strings off',
-      "set standard_conforming_strings = off;\nselect '\\' /* ';\ncommit;\n-- */",
-    ],
     ['a quoted identifier', 'select 1 as "/*";\ncommit;\nselect 1 as "*/";'],
     ['a line comment', '-- note /*\ncommit;\n-- */'],
     ['a dollar-quoted string', 'select $$ /* $$;\ncommit;\nselect $$ */ $$;'],
     ['a tagged dollar-quoted string', 'select $t$ /* $t$;\ncommit;\nselect $t$ */ $t$;'],
   ])('sees a commit after a comment marker inside %s', (_where, sql) => {
     expect(transactionControl(sql)).toEqual(['commit']);
+  });
+
+  it('ends a line comment at a carriage return, as Postgres does', () => {
+    expect(transactionControl('-- x\rcommit;')).toEqual(['commit']);
+  });
+
+  it('reads a plain string the standard way, where a backslash is just a character', () => {
+    // Read as if backslashes escaped quotes, the '/*' and '*/' here would join a
+    // string and a comment and hide the commit between them.
+    expect(transactionControl("select 'x\\'; select '/*'; commit; select '*/';")).toEqual(['commit']);
+    // And an ordinary path idiom followed by a comment is not refused.
+    expect(transactionControl("update f set p = replace(p, '\\', '/');\n-- rollback is the tool's job\n")).toEqual([]);
+  });
+
+  it('reads a plain string with backslash escapes when asked to', () => {
+    // What Postgres does while standard_conforming_strings is off, which the
+    // rehearsal checks on the target before running each file.
+    expect(transactionControl("select '\\' /* ';\ncommit;\n-- */", true)).toEqual(['commit']);
+    expect(transactionControl("select '\\' /* ';\ncommit;\n-- */")).toEqual([]);
+  });
+
+  it('does not open a dollar quote straight after an identifier character', () => {
+    // `a$$` is an identifier. Read as an opening tag, it would swallow the
+    // comment's `*/` and expose the word inside it.
+    expect(transactionControl('create table t (a$$ int); /* $$ commit */ select 1;')).toEqual([]);
   });
 
   it('reads block comments as nesting, the way Postgres does', () => {
@@ -367,6 +389,24 @@ describe('the transaction', () => {
     expect(messages(findings)).toMatch(/never been migrated/);
   });
 
+  it('checks each file again, before running it, when the session reads backslashes as escapes', async () => {
+    // A file that passed guard 2 read the standard way. With
+    // standard_conforming_strings off, Postgres reads the same text differently,
+    // and the commit hidden behind the quote is real.
+    const hidden = "select '\\' /* ';\ncommit;\n-- */";
+    const files = ['2_hidden.sql'];
+    const off = world((sql) => (sql === CONFORMING_QUERY ? [{ value: 'off' }] : undefined));
+    const refused = await rehearsal(off.client, files, () => hidden);
+    expect(messages(refused)).toMatch(/transaction control/);
+    expect(messages(refused)).toMatch(/standard_conforming_strings/);
+    expect(off.queries).not.toContain(hidden);
+    expect(off.queries).toContain('rollback');
+
+    const on = world((sql) => (sql === CONFORMING_QUERY ? [{ value: 'on' }] : undefined));
+    await rehearsal(on.client, files, () => hidden);
+    expect(on.queries).toContain(hidden);
+  });
+
   it('says out loud when the target is ahead of the branch', async () => {
     const { client } = world((sql) => (sql === LEDGER_QUERY ? [{ version: '1' }, { version: '9' }] : undefined));
     const findings = await rehearsal(client, ['1_a.sql', '2_b.sql'], read);
@@ -399,6 +439,11 @@ describe('the report, as text from outside the tool reaches it', () => {
       expect(line).not.toMatch(/^::/);
       expect(line).not.toMatch(/^### Migration rehearsal: OK/);
     }
+  });
+
+  it('flattens a finding that reaches render with a line break in it', () => {
+    const report = render([{ check: 'x', level: 'fail', message: 'a\n::warning::b' }]);
+    for (const line of report.split('\n')) expect(line).not.toMatch(/^::/);
   });
 
   it('prints outside text as a code span, where markdown is inert', () => {
