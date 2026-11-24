@@ -220,6 +220,10 @@ describe('guard 2: transaction control in the SQL', () => {
     expect(transactionControl('create table t (a$$ int); /* $$ commit */ select 1;')).toEqual([]);
   });
 
+  it('drops a comment between continued string segments, like any other comment', () => {
+    expect(transactionControl("select E'first'\n-- rollback plan\n'second';")).toEqual([]);
+  });
+
   it('does not carry E-string escapes into a string that is not a continuation', () => {
     // On the same line, the second string is a new ordinary one, where a backslash is a character.
     expect(transactionControl("select E'' || '\\'; select '/*'; commit; select '*/';")).toEqual(['commit']);

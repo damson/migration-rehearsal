@@ -319,8 +319,8 @@ function strip(sql: string, dollarQuotes: boolean, backslashQuotes: boolean): st
       i = end;
     } else if (c === "'" || c === '"') {
       const backslashEscapes = c === "'" && (backslashQuotes || isEStringPrefix(sql, i));
-      const end = quotedEnd(sql, i, c, backslashEscapes);
-      out.push(sql.slice(i, end));
+      const { end, text } = quoted(sql, i, c, backslashEscapes);
+      out.push(text);
       i = end;
     } else if (c === '$' && dollarQuotes && !(i > 0 && IDENT_CHAR.test(sql.charAt(i - 1)))) {
       DOLLAR_TAG.lastIndex = i;
@@ -395,8 +395,19 @@ function continuationAt(sql: string, from: number): number {
   return newline && sql.charAt(k) === "'" ? k : -1;
 }
 
-/** The index just past the quote that closes the one at `start`, or the end of the SQL. */
-function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: boolean): number {
+/**
+ * The literal opened at `start`: the index just past its closing quote (or
+ * the end of the SQL), and its text with any comment between continued
+ * segments replaced by a space, as the scanner treats every other comment.
+ */
+function quoted(
+  sql: string,
+  start: number,
+  quote: string,
+  backslashEscapes: boolean,
+): { end: number; text: string } {
+  const segments: string[] = [];
+  let segmentStart = start;
   let j = start + 1;
   while (j < sql.length) {
     if (backslashEscapes && sql[j] === '\\') {
@@ -410,13 +421,19 @@ function quotedEnd(sql: string, start: number, quote: string, backslashEscapes: 
       // are one string to Postgres, and the second keeps the first's escape
       // mode. So `E''` on one line and `'\' /* '` on the next are one E-string.
       const next = quote === "'" ? continuationAt(sql, j + 1) : -1;
-      if (next === -1) return j + 1;
+      if (next === -1) {
+        segments.push(sql.slice(segmentStart, j + 1));
+        return { end: j + 1, text: segments.join(' ') };
+      }
+      segments.push(sql.slice(segmentStart, j + 1));
+      segmentStart = next;
       j = next + 1;
     } else {
       j++;
     }
   }
-  return sql.length;
+  segments.push(sql.slice(segmentStart));
+  return { end: sql.length, text: segments.join(' ') };
 }
 
 /**
