@@ -41,6 +41,7 @@ import {
   exitCode,
   fail,
   isLoopback,
+  linkedComponent,
   literal,
   loopbackOverride,
   normaliseError,
@@ -58,8 +59,22 @@ function migrationFiles(): string[] {
   return fs.readdirSync(DIR).filter((f) => f.endsWith('.sql'));
 }
 
+/** Opened with O_NOFOLLOW, so a file swapped for a link after the check is not followed either. */
 function readMigration(file: string): string {
-  return fs.readFileSync(path.join(DIR, file), 'utf8');
+  const fd = fs.openSync(path.join(DIR, file), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    return fs.readFileSync(fd, 'utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function isSymlink(p: string): boolean {
+  try {
+    return fs.lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
 }
 
 /** `lstat`, so a symlink is reported as one rather than followed. */
@@ -96,6 +111,19 @@ async function main(): Promise<number> {
   const refusal = envRefusal({ targetDbUrl: url, expectedRef }, override);
   if (refusal || !url) {
     console.error(refusal ?? 'the target connection string is not set: refusing to guess a target.');
+    return 1;
+  }
+
+  // Before the directory is listed: a linked directory would list files from
+  // wherever the link points.
+  const linked = linkedComponent(process.cwd(), MIGRATIONS_DIR, isSymlink);
+  if (linked) {
+    console.log(
+      render([
+        fail('migrations', `${literal(linked)} is a symlink: refusing to read migrations through a link.`),
+        ok('rehearsal', 'not run: the target or the migrations were refused above.'),
+      ]),
+    );
     return 1;
   }
 

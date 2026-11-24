@@ -9,6 +9,7 @@ import {
   blameFor,
   envRefusal,
   failureFinding,
+  linkedComponent,
   literal,
   loopbackOverride,
   migrationRefusals,
@@ -438,5 +439,22 @@ describe('what counts as a migration file', () => {
     const rlo = String.fromCharCode(0x202e);
     const zwsp = String.fromCharCode(0x200b);
     expect(literal(`1_a${rlo}lqs.exe${zwsp}.sql`)).toBe('`1_a?lqs.exe?.sql`');
+  });
+});
+
+describe('the migrations directory', () => {
+  // The path comes from the workflow, but the directories along it come from
+  // the pull request's tree, and any of them can be a committed symlink.
+  const links = new Set(['/w/pr/supabase']);
+  const isLink = (p: string) => links.has(p);
+
+  it('names the first component along the given path that is a symlink', () => {
+    expect(linkedComponent('/w/trusted', '../pr/supabase/migrations', isLink)).toBe('/w/pr/supabase');
+  });
+
+  it('accepts a path with no link in it, and does not look above where it starts', () => {
+    expect(linkedComponent('/w/trusted', '../pr/db/migrations', isLink)).toBeNull();
+    // The working directory's own ancestry belongs to the runner, not the pull request.
+    expect(linkedComponent('/w/pr/supabase', 'migrations', isLink)).toBeNull();
   });
 });

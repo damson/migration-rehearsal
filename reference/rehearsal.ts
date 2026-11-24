@@ -458,6 +458,29 @@ export function transactionControlFindings(file: string, hits: readonly string[]
 }
 
 /**
+ * The first directory along `dir` that is a symlink, or null.
+ *
+ * Only the components `dir` names are checked, walking from `cwd`. The
+ * working directory's own ancestry belongs to the runner; every directory
+ * below it comes from the pull request's tree, where a committed symlink would
+ * point the run at files outside it. POSIX paths, as on a GitHub-hosted runner.
+ */
+export function linkedComponent(cwd: string, dir: string, isLink: (p: string) => boolean): string | null {
+  const parts = dir.startsWith('/') ? [] : cwd.split('/').filter(Boolean);
+  for (const part of dir.split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+    const at = `/${parts.join('/')}`;
+    if (isLink(at)) return at;
+  }
+  return null;
+}
+
+/**
  * Everything about the files that can be decided without a database: that there
  * are any, and that none of them manages its own transaction.
  */
