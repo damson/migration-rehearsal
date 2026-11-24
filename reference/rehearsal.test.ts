@@ -420,3 +420,23 @@ describe('the report, as text from outside the tool reaches it', () => {
     }
   });
 });
+
+describe('what counts as a migration file', () => {
+  it('refuses a file that is not a regular file, without reading anything', () => {
+    // A pull request can commit a symlink, and the step that reads migrations
+    // holds the database credential. Following it would send any file the
+    // runner can read to the database as SQL, and into the report on failure.
+    const read = (file: string): string => {
+      throw new Error(`read ${file}`);
+    };
+    const findings = migrationRefusals(['1_a.sql', '2_link.sql'], read, 'migrations', (f) => f !== '2_link.sql');
+    expect(worst(findings)).toBe('fail');
+    expect(findings.map((f) => f.message).join(' ')).toMatch(/2_link\.sql.*not a regular file/);
+  });
+
+  it('strips characters that reorder or hide text in the report', () => {
+    const rlo = String.fromCharCode(0x202e);
+    const zwsp = String.fromCharCode(0x200b);
+    expect(literal(`1_a${rlo}lqs.exe${zwsp}.sql`)).toBe('`1_a?lqs.exe?.sql`');
+  });
+});

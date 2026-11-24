@@ -113,7 +113,7 @@ export function render(findings: readonly Finding[]): string {
   return [`### Migration rehearsal: ${worst(findings).toUpperCase()}`, '', ...lines, ''].join('\n');
 }
 
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]/g;
 
 function oneLine(text: string): string {
   return text.replace(CONTROL, '?');
@@ -465,12 +465,27 @@ export function migrationRefusals(
   files: readonly string[],
   read: (file: string) => string,
   dir: string,
+  isRegular: (file: string) => boolean = () => true,
 ): Finding[] {
   // Asserted, not assumed. An empty directory makes the loop below vacuous, so
   // without this the rehearsal reports a clean bill of health for a run that read
   // no files at all.
   if (files.length === 0) {
     return [fail('migrations', `no .sql files in ${dir}: refusing to report a rehearsal that read nothing.`)];
+  }
+
+  // Before any file is read. A pull request can commit a symlink, and this runs
+  // in the step that holds the credential: following one would send any file
+  // the runner can read to the database as SQL, and into the report on failure.
+  const irregular = files.filter((file) => !isRegular(file));
+  if (irregular.length > 0) {
+    return [
+      fail(
+        'migrations',
+        `${irregular.map(literal).join(', ')} in ${dir}: not a regular file. Refusing to read through a ` +
+          'link or a device: a migration is a file committed to the repository.',
+      ),
+    ];
   }
   const unversioned = files.filter((file) => versionOf(file) === null);
 
@@ -526,6 +541,7 @@ export function preDialFindings(input: {
   targetChecks: (url: string, expectedRef: string) => Finding[];
   read: (file: string) => string;
   dir: string;
+  isRegular?: (file: string) => boolean;
 }): Finding[] {
   const findings: Finding[] = [...input.override.findings];
   // Under the override the target checks are the thing being skipped, so
@@ -536,7 +552,7 @@ export function preDialFindings(input: {
   // The migration checks run either way. The override is about which DATABASE
   // may be reached and says nothing about what the files may contain: a rehearsal
   // against a throwaway container still must not commit.
-  findings.push(...migrationRefusals(input.files, input.read, input.dir));
+  findings.push(...migrationRefusals(input.files, input.read, input.dir, input.isRegular));
   return findings;
 }
 

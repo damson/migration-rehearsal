@@ -20,6 +20,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   cost is linear: a few megabytes of unterminated `/*`
   could previously hold the job until its timeout. The self-test watches the
   quoted case refuse.
+- A migration that is not a regular file, such as a symlink, is refused before
+  anything is read. The step that reads migrations holds the credential, and
+  following a link would send any file the runner can read to the database as
+  SQL. An error that escapes the runner is printed as one escaped line, and
+  the report also strips characters that reorder or hide text.
 - Guard 2 refuses `abort`, `end work` and `end transaction`, which are
   `rollback` and `commit` under other names, and `prepare transaction`, which detaches the rehearsal's
   transaction and leaves every later statement to commit on its own. The

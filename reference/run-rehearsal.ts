@@ -62,6 +62,15 @@ function readMigration(file: string): string {
   return fs.readFileSync(path.join(DIR, file), 'utf8');
 }
 
+/** `lstat`, so a symlink is reported as one rather than followed. */
+function isRegularFile(file: string): boolean {
+  try {
+    return fs.lstatSync(path.join(DIR, file)).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /**
  * TLS on, always, except against loopback.
  *
@@ -99,6 +108,7 @@ async function main(): Promise<number> {
     targetChecks: targetFindings,
     read: readMigration,
     dir: MIGRATIONS_DIR,
+    isRegular: isRegularFile,
   });
   if (exitCode(refusals) !== 0) {
     console.log(render([...refusals, ok('rehearsal', 'not run: the target or the migrations were refused above.')]));
@@ -128,6 +138,8 @@ async function main(): Promise<number> {
 main()
   .then((code) => process.exit(code))
   .catch((e) => {
-    console.error(e);
+    // One line through `literal`: the message can carry a filename the pull
+    // request chose, and stderr reaches the same job log as the report.
+    console.error(literal(e instanceof Error ? e.message : String(e)));
     process.exit(1);
   });
