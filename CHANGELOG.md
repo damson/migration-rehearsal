@@ -8,46 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Security
 
-- Guard 2 finds comments the way Postgres does. It read any `/*` as the start
-  of a comment, including one inside a string literal, a quoted identifier, a
-  dollar-quoted body or a `--` comment, and deleted everything up to the next
-  `*/`. A `commit` placed between the two passed guard 2 and ran for real,
-  leaving guard 3 to report a write that had already happened. The stripper is
-  now a lexer that honours quoting, `E''` escapes, dollar quotes and nested
-  block comments. Before each file runs, the rehearsal asks the session how it
-  reads strings: with `standard_conforming_strings` off, which an earlier file
-  or the target can set, a backslash escapes a quote, and the file is read again
-  that way and refused if a statement appears. Its cost is linear: a few megabytes of unterminated `/*`
-  could previously hold the job until its timeout. The self-test watches the
-  quoted case refuse.
-- A migration that is not a regular file, such as a symlink, is refused before
-  anything is read, and so is a migrations directory reached through a link.
-  The step that reads migrations holds the credential, and
-  following a link would send any file the runner can read to the database as
-  SQL. An error that escapes the runner is printed as one escaped line, and
-  the report also strips characters that reorder or hide text.
-- Guard 2 refuses `abort`, `end work` and `end transaction`, which are
-  `rollback` and `commit` under other names, and `prepare transaction`, which detaches the rehearsal's
-  transaction and leaves every later statement to commit on its own. The
-  headers that said it refuses all transaction control now say what it refuses,
-  and that a bare `end;` is caught by guard 3 after its write.
-- A filename, a database message or a ledger version reaches the report as a
-  one-line code span. A migration named with a line break could otherwise
-  write a `::warning::` workflow command or a forged heading into the job log
-  and the job summary, and markdown in any of the three rendered there.
-- The reference gate runs the rehearsal tool, its dependencies and its lockfile
-  from the base commit, and reads only the migration files from the pull
-  request. A pull request that edited the runner or the lockfile could
-  otherwise print the database credential from the step that holds it. The
-  remaining path is documented in the workflow and the article: a pull request
-  that edits a workflow, or adds one declaring the environment, gets the
-  secret, and only required reviewers on the environment stop that. Both also
-  say that a failure can quote a row value into a report that is public on a
-  public repository.
-- Every action in the reference workflows and in this repository's own is
-  pinned to a full commit SHA. The reference workflows had fallen behind on
-  `@v5` tags, because Dependabot does not see `reference/`, and
-  `check-placeholders` now fails when their pins differ from the tested ones.
+- Guard 2 reads comments the way Postgres does, so a `/*` inside a string or
+  after `--` can no longer hide a `commit`. It also refuses `abort`,
+  `end work`, `end transaction` and `prepare transaction`, and rereads a file
+  before it runs when the session has `standard_conforming_strings` off.
+- A migration that is a symlink, or sits in a linked directory, is refused.
+- Filenames and database messages can no longer forge lines in the job log or
+  summary.
+- The reference gate runs its code from the base commit, not the pull request.
+- Every action is pinned to a commit SHA, and CI fails if the reference
+  workflows' pins drift.
 
 ### Fixed
 
